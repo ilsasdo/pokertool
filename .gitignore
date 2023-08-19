@@ -1,0 +1,5 @@
+/.idea/
+/elm-stuff/
+/backend_auto/
+/backend/.aws-sam/
+/dist/app.js

@@ -1,0 +1,17 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: PokerTool Serverless Backend
+
+Resources:
+  createRoom:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: room.createRoom
+      Runtime: nodejs18.x
+      Events:
+        CreateRoom:
+          Type: Api
+          Properties:
+            Path: /room
+            Method: post
