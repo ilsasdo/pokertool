@@ -2,8 +2,23 @@
 
 https://github.com/aws/serverless-application-model/blob/master/versions/2016-10-31.md#aws-serverless-application-model-sam
 
+https://betterprogramming.pub/aws-sam-setting-local-serverless-development-with-lambda-and-dynamodb-5b4c7375f813
+
+# startup local dynamodb
+
+1. `docker run -p 8000:8000 amazon/dynamodb-local`
+2. create local table: `aws dynamodb create-table --table-name pokertool --attribute-definitions AttributeName=id,AttributeType=S --key-schema AttributeName=id,KeyType=HASH --billing-mode PAY_PER_REQUEST --endpoint-url http://localhost:8000`
+3. list table content: `aws dynamodb execute-statement --statement "SELECT * FROM pokertool" --endpoint-url http://localhost:8000`
+
+
+invoke local function with:
+
+`DOCKER_HOST="unix://$HOME/.colima/docker.sock" sam local invoke createRoom`
+
 # run project with
-elm-live src/Pokertool.elm --host=0.0.0.0 --dir=dist -- --output=dist/app.js
+
+`./rundev.sh`
+
 
 
 # roadmap

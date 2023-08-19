@@ -2,6 +2,10 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: PokerTool Serverless Backend
 
+Globals:
+  Function:
+    Timeout: 10
+
 Resources:
   createRoom:
     Type: AWS::Serverless::Function
@@ -9,9 +13,24 @@ Resources:
       CodeUri: src/
       Handler: room.createRoom
       Runtime: nodejs18.x
+      MemorySize: 512
       Events:
         CreateRoom:
-          Type: Api
+          Type: HttpApi
           Properties:
-            Path: /room
+            Path: /rooms
             Method: post
+
+  PokertoolTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: pokertool
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH

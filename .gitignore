@@ -3,3 +3,4 @@
 /backend_auto/
 /backend/.aws-sam/
 /dist/app.js
+/backend/src/node_modules/

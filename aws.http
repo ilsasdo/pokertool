@@ -1,0 +1,12 @@
+###
+
+# CREATE a new ROOM
+PUT https://wa49q02ic4.execute-api.eu-north-1.amazonaws.com/rooms
+Content-Type: application/json
+
+{
+  "name": "my first room"
+}
+
+###
+
