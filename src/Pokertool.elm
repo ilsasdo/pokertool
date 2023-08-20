@@ -3,8 +3,10 @@ module Pokertool exposing (..)
 import Browser
 import Dict exposing (Dict)
 import Html exposing (Html, button, div, h1, h3, input, label, p, text)
-import Html.Attributes exposing (class, for, href, id, placeholder, target, type_, value)
+import Html.Attributes exposing (class, for, href, id, placeholder, style, target, type_, value)
 import Html.Events exposing (onClick, onInput)
+import Http exposing (Error)
+import Room exposing (Card, Room, emptyRoom, isEmptyRoom)
 
 
 main =
@@ -37,6 +39,8 @@ getUsername user =
 type alias Model =
     { currentUser : User
     , room : Room
+    , loadingMessage : Maybe String
+    , error : Maybe Error
     , inputUsername : String
     , inputRoomId : String
     , inputRoomName : String
@@ -46,30 +50,7 @@ type alias Model =
 
 emptyModel : Model
 emptyModel =
-    Model Anonymous emptyRoom "" "" "" ""
-
-
-type alias Room =
-    { id : String
-    , name : String
-    , cardToVote : Maybe Card
-    , cards : List Card
-    }
-
-
-emptyRoom =
-    Room "" "" Nothing []
-
-
-isEmptyRoom room =
-    room.id == "" && room.name == ""
-
-
-type alias Card =
-    { id : String
-    , name : String
-    , votes : Dict String Int
-    }
+    Model Anonymous emptyRoom Nothing Nothing "" "" "" ""
 
 
 type Msg
@@ -83,6 +64,7 @@ type Msg
     | InputRoomId String
     | InputTaskName String
     | InputRoomName String
+    | HttpRoomCreated (Result Http.Error Room)
 
 
 init : () -> ( Model, Cmd Msg )
@@ -117,7 +99,17 @@ update msg model =
             ( { model | room = Room model.inputRoomId "fake name" Nothing [] }, Cmd.none )
 
         CreateRoom ->
-            ( { model | room = Room "f01kaxk3" model.inputRoomName Nothing [] }, Cmd.none )
+            ( { model | loadingMessage = Just "Room creation in progress..." }
+            , Room.createRoom model.inputRoomName HttpRoomCreated
+            )
+
+        HttpRoomCreated result ->
+            case result of
+                Ok room ->
+                    ( { model | room = room }, Cmd.none )
+
+                Err message ->
+                    ( { model | error = Just message, loadingMessage = Nothing }, Cmd.none )
 
         AddCard ->
             ( { model | room = addCard model.inputCardname model.room, inputCardname = "" }, Cmd.none )
@@ -167,6 +159,8 @@ view : Model -> Html Msg
 view model =
     div []
         ([ h1 [] [ text "Pokertool" ]
+         , viewLoadingMessage model.loadingMessage
+         , viewErrorMessage model.error
          , viewCurrentUser model.currentUser
          ]
             ++ viewRoom model.room
@@ -174,6 +168,19 @@ view model =
             ++ viewAddNewCard model
             ++ viewVoteCard model.room.cardToVote
         )
+
+
+viewErrorMessage error =
+    p [ style "color" "red" ] [ text (Debug.toString error) ]
+
+
+viewLoadingMessage message =
+    case message of
+        Nothing ->
+            text ""
+
+        Just m ->
+            p [] [ text m ]
 
 
 viewCurrentUser user =

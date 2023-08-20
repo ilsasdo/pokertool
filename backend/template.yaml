@@ -6,7 +6,23 @@ Globals:
   Function:
     Timeout: 10
 
+
 Resources:
+  HttpApiCorsConfig:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowHeaders:
+          - "content-type"
+        AllowMethods:
+          - OPTIONS
+          - HEAD
+          - POST
+          - PUT
+          - GET
+        AllowOrigins:
+          - "http://localhost:8000"
+
   createRoom:
     Type: AWS::Serverless::Function
     Properties:
@@ -14,10 +30,14 @@ Resources:
       Handler: room.createRoom
       Runtime: nodejs18.x
       MemorySize: 512
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PokertoolTable
       Events:
         CreateRoom:
           Type: HttpApi
           Properties:
+            ApiId: !Ref HttpApiCorsConfig
             Path: /rooms
             Method: post
 
