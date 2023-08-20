@@ -31,7 +31,7 @@ Resources:
       Runtime: nodejs18.x
       MemorySize: 512
       Policies:
-        - DynamoDBCrudPolicy:
+        - DynamoDBWritePolicy:
             TableName: !Ref PokertoolTable
       Events:
         CreateRoom:
@@ -39,6 +39,42 @@ Resources:
           Properties:
             ApiId: !Ref HttpApiCorsConfig
             Path: /rooms
+            Method: post
+
+  loadRoom:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: room.loadRoom
+      Runtime: nodejs18.x
+      MemorySize: 512
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref PokertoolTable
+      Events:
+        CreateRoom:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiCorsConfig
+            Path: /rooms/{id}
+            Method: get
+
+  joinRoom:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: room.joinRoom
+      Runtime: nodejs18.x
+      MemorySize: 512
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PokertoolTable
+      Events:
+        CreateRoom:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiCorsConfig
+            Path: /rooms/{id}/join
             Method: post
 
   PokertoolTable:
