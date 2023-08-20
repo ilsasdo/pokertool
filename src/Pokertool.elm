@@ -6,7 +6,7 @@ import Html exposing (Html, button, div, h1, h3, input, label, p, text)
 import Html.Attributes exposing (class, for, href, id, placeholder, style, target, type_, value)
 import Html.Events exposing (onClick, onInput)
 import Http exposing (Error)
-import Room exposing (Card, Room, addCard, castVote, isEmptyRoom, selectCard)
+import Room exposing (Card, Room, addCard, castVote, selectCard)
 
 
 main =
@@ -125,13 +125,16 @@ update msg model =
                     ( { model | error = Just message, loadingMessage = Nothing }, Cmd.none )
 
         AddCard ->
-            ( { model
-                | room =
-                    model.room |> Maybe.map (addCard model.inputCardname)
-                , inputCardname = ""
-              }
-            , Cmd.none
-            )
+            case model.room of
+                Nothing ->
+                    ( model, Cmd.none )
+
+                Just room ->
+                    ( { model
+                        | loadingMessage = Just "Adding card..."
+                      }
+                    , addCard room.id model.inputCardname HttpRoomLoaded
+                    )
 
         SelectCard card ->
             ( { model | room = model.room |> Maybe.map (selectCard card) }, Cmd.none )
@@ -216,13 +219,17 @@ viewCard card =
 
 computeCardValue : Dict String Int -> Float
 computeCardValue votes =
-    (votes
-        |> Dict.toList
-        |> List.map Tuple.second
-        |> List.foldl (+) 0
-        |> toFloat
-    )
-        / (Dict.size votes |> toFloat)
+    if Dict.size votes == 0 then
+        0
+
+    else
+        (votes
+            |> Dict.toList
+            |> List.map Tuple.second
+            |> List.foldl (+) 0
+            |> toFloat
+        )
+            / (Dict.size votes |> toFloat)
 
 
 viewVoteCard : Maybe Room -> List (Html Msg)

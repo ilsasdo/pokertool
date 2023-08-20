@@ -77,6 +77,24 @@ Resources:
             Path: /rooms/{id}/join
             Method: post
 
+  addCard:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: room.addCard
+      Runtime: nodejs18.x
+      MemorySize: 512
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PokertoolTable
+      Events:
+        CreateRoom:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiCorsConfig
+            Path: /rooms/{id}/addCard
+            Method: post
+
   PokertoolTable:
     Type: AWS::DynamoDB::Table
     Properties:

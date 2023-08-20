@@ -16,10 +16,6 @@ type alias Room =
     }
 
 
-isEmptyRoom room =
-    room.id == "" && room.name == ""
-
-
 type alias Card =
     { id : String
     , name : String
@@ -58,6 +54,20 @@ loadRoom roomId event =
         }
 
 
+addCard roomId cardname event =
+    Http.post
+        { url = urlAddress ("/rooms/" ++ roomId ++ "/addCard")
+        , body = Http.jsonBody (addCardEncoder cardname)
+        , expect = Http.expectJson event (roomDecoder Room)
+        }
+
+
+addCardEncoder cardname =
+    Encode.object
+        [ ( "name", Encode.string cardname )
+        ]
+
+
 createRoomEncoder roomname username =
     Encode.object
         [ ( "name", Encode.string roomname )
@@ -88,8 +98,8 @@ cardDecoder =
         (field "votes" (Decode.dict int))
 
 
-addCard : String -> Room -> Room
-addCard cardname room =
+addCard_ : String -> Room -> Room
+addCard_ cardname room =
     { room | cards = room.cards ++ [ Card "id" cardname Dict.empty ] }
 
 

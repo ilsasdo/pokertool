@@ -68,6 +68,40 @@ export const joinRoom = async (event, context) => {
     }
 }
 
+export const addCard = async (event, context) => {
+    try {
+        let request = JSON.parse(event.body);
+        await dynamo.send(
+            new UpdateCommand({
+                TableName: tableName,
+                Key: {
+                    id: event.pathParameters.id,
+                },
+                UpdateExpression: "SET cards = list_append(cards, :card)",
+                ExpressionAttributeValues: {
+                    ":card": [{id: randomUUID(), name: request.name, votes: {}}],
+                }
+            })
+        );
+
+        let output = await dynamo.send(
+            new GetCommand({
+                TableName: tableName,
+                Key: {
+                    id: event.pathParameters.id,
+                },
+            })
+        );
+
+        return {
+            'statusCode': 200,
+            'body': JSON.stringify(output.Item)
+        }
+    } catch (err) {
+        return err;
+    }
+}
+
 export const createRoom = async (event, context) => {
     try {
         let requestJSON = JSON.parse(event.body);
