@@ -2,7 +2,7 @@ module Room exposing (..)
 
 import Dict exposing (Dict)
 import Http
-import Json.Decode as Decode exposing (field, int, list, string)
+import Json.Decode as Decode exposing (Decoder, field, int, list, string)
 import Json.Encode as Encode
 
 
@@ -11,7 +11,7 @@ type alias Room =
     , name : String
     , rootUser : Username
     , partecipants : List Username
-    , cardToVote : Maybe Card
+    , cardToVote : Maybe String
     , cards : List Card
     }
 
@@ -28,7 +28,7 @@ type alias Username =
 
 
 urlAddress part =
-    "https://zduined56k.execute-api.eu-west-1.amazonaws.com" ++ part
+    "https://prcmtg3w83.execute-api.eu-west-1.amazonaws.com" ++ part
 
 
 createRoom roomname username event =
@@ -62,6 +62,38 @@ addCard roomId cardname event =
         }
 
 
+selectCard : Card -> (Result Http.Error Room -> a) -> Room -> Cmd a
+selectCard card event room =
+    Http.post
+        { url = urlAddress ("/rooms/" ++ room.id ++ "/selectCard")
+        , body = Http.jsonBody (selectCardEncoder card.id)
+        , expect = Http.expectJson event (roomDecoder Room)
+        }
+
+
+castVote : String -> Card -> Int -> (Result Http.Error Room -> a) -> Room -> Cmd a
+castVote username card vote event room =
+    Http.post
+        { url = urlAddress ("/rooms/" ++ room.id ++ "/castVote")
+        , body = Http.jsonBody (castVoteEncoder (getCardIndex card.id room.cards) username vote)
+        , expect = Http.expectJson event (roomDecoder Room)
+        }
+
+
+selectCardEncoder cardId =
+    Encode.object
+        [ ( "cardId", Encode.string cardId )
+        ]
+
+
+castVoteEncoder cardname username vote =
+    Encode.object
+        [ ( "cardIndex", Encode.int cardname )
+        , ( "username", Encode.string username )
+        , ( "vote", Encode.int vote )
+        ]
+
+
 addCardEncoder cardname =
     Encode.object
         [ ( "name", Encode.string cardname )
@@ -87,7 +119,7 @@ roomDecoder a =
         (field "name" string)
         (field "rootUser" string)
         (field "partecipants" (list string))
-        (Decode.maybe (field "cardToVote" cardDecoder))
+        (Decode.maybe (field "selectedCard" string))
         (field "cards" (list cardDecoder))
 
 
@@ -98,35 +130,18 @@ cardDecoder =
         (field "votes" (Decode.dict int))
 
 
-addCard_ : String -> Room -> Room
-addCard_ cardname room =
-    { room | cards = room.cards ++ [ Card "id" cardname Dict.empty ] }
+getCardToVote : Room -> Maybe Card
+getCardToVote room =
+    room.cards
+        |> List.filter (.id >> (==) (room.cardToVote |> Maybe.withDefault ""))
+        |> List.head
 
 
-selectCard : Card -> Room -> Room
-selectCard card room =
-    { room | cardToVote = Just card }
-
-
-castVote : Card -> Username -> Int -> Room -> Room
-castVote card user vote room =
-    let
-        votedCard =
-            { card | votes = Dict.insert user vote card.votes }
-    in
-    { room
-        | cardToVote = Just votedCard
-        , cards = replaceCard votedCard room.cards
-    }
-
-
-replaceCard card cards =
+getCardIndex : String -> List Card -> Int
+getCardIndex cardId cards =
     cards
-        |> List.map
-            (\c ->
-                if c.name == card.name then
-                    card
-
-                else
-                    c
-            )
+        |> List.indexedMap Tuple.pair
+        |> List.filter (Tuple.second >> .id >> (==) cardId)
+        |> List.map Tuple.first
+        |> List.head
+        |> Maybe.withDefault 0

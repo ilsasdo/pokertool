@@ -4,6 +4,12 @@ https://github.com/aws/serverless-application-model/blob/master/versions/2016-10
 
 https://betterprogramming.pub/aws-sam-setting-local-serverless-development-with-lambda-and-dynamodb-5b4c7375f813
 
+websockets, dynamo streams:
+https://spin.atomicobject.com/2021/01/06/websockets-aws-dynamodb-updates/
+
+simple websocket config:
+https://www.mtechzilla.com/blogs/how-to-develop-a-serverless-real-time-application-using-node-js-aws-and-websockets
+
 # startup local dynamodb
 
 1. `docker run -p 8000:8000 amazon/dynamodb-local`

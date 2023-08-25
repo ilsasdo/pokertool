@@ -1,19 +1,36 @@
 <!doctype html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="app.js"></script>
-<!--  <link href="https://cdn.jsdelivr.net/npm/daisyui@3.5.0/dist/full.css" rel="stylesheet" type="text/css" />-->
-<!--  <script src="https://cdn.tailwindcss.com"></script>-->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="app.js"></script>
+    <!--  <link href="https://cdn.jsdelivr.net/npm/daisyui@3.5.0/dist/full.css" rel="stylesheet" type="text/css" />-->
+    <!--  <script src="https://cdn.tailwindcss.com"></script>-->
 </head>
 <body>
+<script></script>
 <div id="app"></div>
 <script>
-  Elm.Pokertool.init({
-    flags: new URLSearchParams(window.location.search).get("roomId") || "",
-    node: document.getElementById('app')
-  });
+    let app = Elm.Pokertool.init({
+        flags: new URLSearchParams(window.location.search).get("roomId") || "",
+        node: document.getElementById('app')
+    });
+    // When a command goes to the `sendMessage` port, we pass the message
+    // along to the WebSocket.
+    app.ports.openWebsocket.subscribe(function (roomId) {
+        console.log("Open websocket to: "+ roomId)
+        let socket = new WebSocket('wss://81bdk9r5xc.execute-api.eu-west-1.amazonaws.com/Prod')
+        socket.addEventListener("open", function (event) {
+            socket.send(JSON.stringify({"action": "joinRoom", "roomId": roomId}))
+        })
+
+        socket.addEventListener("message", function (event) {
+            console.log("Message received: ")
+            console.log(event)
+            app.ports.roomUpdate.send("message received!")
+        })
+    });
+
 </script>
 </body>
 </html>

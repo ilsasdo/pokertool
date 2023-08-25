@@ -1,4 +1,4 @@
-module Pokertool exposing (..)
+port module Pokertool exposing (..)
 
 import Browser
 import Dict exposing (Dict)
@@ -6,7 +6,8 @@ import Html exposing (Html, button, div, h1, h3, input, label, p, text)
 import Html.Attributes exposing (class, for, href, id, placeholder, style, target, type_, value)
 import Html.Events exposing (onClick, onInput)
 import Http exposing (Error)
-import Room exposing (Card, Room, addCard, castVote, selectCard)
+import Room exposing (Card, Room, addCard, castVote, getCardToVote, selectCard)
+import Time
 
 
 main =
@@ -56,7 +57,7 @@ emptyModel =
 type Msg
     = SetUsername
     | CreateRoom
-    | LoadRoom
+    | LoadRoom Time.Posix
     | JoinRoom
     | AddCard
     | SelectCard Card
@@ -66,6 +67,18 @@ type Msg
     | InputTaskName String
     | InputRoomName String
     | HttpRoomLoaded (Result Http.Error Room)
+    | RoomJoined (Result Http.Error Room)
+    | Recv String
+
+
+
+-- PORTS
+
+
+port openWebsocket : String -> Cmd msg
+
+
+port roomUpdate : (String -> msg) -> Sub msg
 
 
 init : () -> ( Model, Cmd Msg )
@@ -75,7 +88,7 @@ init _ =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    Sub.none
+    roomUpdate Recv
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -96,7 +109,7 @@ update msg model =
         SetUsername ->
             ( { model | currentUser = LoggedIn model.inputUsername }, Cmd.none )
 
-        LoadRoom ->
+        LoadRoom _ ->
             case model.room of
                 Nothing ->
                     ( model, Cmd.none )
@@ -108,13 +121,28 @@ update msg model =
 
         JoinRoom ->
             ( { model | loadingMessage = Just "Joining room..." }
-            , Room.joinRoom model.inputRoomId (getUsername model.currentUser) HttpRoomLoaded
+            , Room.joinRoom model.inputRoomId (getUsername model.currentUser) RoomJoined
             )
+
+        RoomJoined result ->
+            case result of
+                Ok room ->
+                    ( { model | room = Just room, loadingMessage = Nothing, error = Nothing }, openWebsocket room.id )
+
+                Err message ->
+                    ( { model | error = Just message, loadingMessage = Nothing }, Cmd.none )
 
         CreateRoom ->
             ( { model | loadingMessage = Just "Room creation in progress..." }
             , Room.createRoom model.inputRoomName (getUsername model.currentUser) HttpRoomLoaded
             )
+
+        Recv message ->
+            let
+                d =
+                    Debug.log "Message Received" message
+            in
+            ( model, Cmd.none )
 
         HttpRoomLoaded result ->
             case result of
@@ -137,17 +165,16 @@ update msg model =
                     )
 
         SelectCard card ->
-            ( { model | room = model.room |> Maybe.map (selectCard card) }, Cmd.none )
+            ( model, Maybe.map (selectCard card HttpRoomLoaded) model.room |> Maybe.withDefault Cmd.none )
 
         CastVote card value ->
-            ( { model | room = model.room |> Maybe.map (castVote card (getUsername model.currentUser) value) }, Cmd.none )
+            ( model, Maybe.map (castVote (getUsername model.currentUser) card value HttpRoomLoaded) model.room |> Maybe.withDefault Cmd.none )
 
 
 view : Model -> Html Msg
 view model =
     div []
         ([ h1 [] [ text "Pokertool" ]
-         , viewLoadingMessage model.loadingMessage
          , viewErrorMessage model.error
          , viewCurrentUser model.currentUser
          ]
@@ -155,6 +182,7 @@ view model =
             ++ (viewAskForUserName model :: viewAskForRoom model)
             ++ viewAddNewCard model
             ++ viewVoteCard model.room
+            ++ [ viewLoadingMessage model.loadingMessage ]
         )
 
 
@@ -186,7 +214,7 @@ viewRoom room =
             [ p [] [ text "Empty Room" ] ]
 
         Just r ->
-            [ p [] [ text ("id: " ++ r.id), button [ onClick LoadRoom ] [ text "reload" ] ]
+            [ p [] [ text ("id: " ++ r.id), button [ onClick (LoadRoom (Time.millisToPosix 0)) ] [ text "reload" ] ]
             , p [] [ text ("name: " ++ r.name) ]
             , p []
                 [ text "Partecipants:"
@@ -235,7 +263,7 @@ computeCardValue votes =
 viewVoteCard : Maybe Room -> List (Html Msg)
 viewVoteCard maybeRoom =
     maybeRoom
-        |> Maybe.andThen .cardToVote
+        |> Maybe.andThen getCardToVote
         |> Maybe.map
             (\card ->
                 [ div []

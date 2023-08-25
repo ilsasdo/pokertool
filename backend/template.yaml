@@ -6,7 +6,6 @@ Globals:
   Function:
     Timeout: 10
 
-
 Resources:
   HttpApiCorsConfig:
     Type: AWS::Serverless::HttpApi
@@ -23,15 +22,30 @@ Resources:
         AllowOrigins:
           - "http://localhost:8000"
 
-  createRoom:
+  ProcessDynamoDBStream:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/
-      Handler: room.createRoom
+      Handler: websocket.streamUpdate
+      Runtime: nodejs18.x
+      Policies: AWSLambdaDynamoDBExecutionRole
+      Events:
+        Stream:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt PokertoolTable.StreamArn
+            BatchSize: 100
+            StartingPosition: TRIM_HORIZON
+
+  RoomFunctions:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: room.requestHandler
       Runtime: nodejs18.x
       MemorySize: 512
       Policies:
-        - DynamoDBWritePolicy:
+        - DynamoDBCrudPolicy:
             TableName: !Ref PokertoolTable
       Events:
         CreateRoom:
@@ -40,59 +54,35 @@ Resources:
             ApiId: !Ref HttpApiCorsConfig
             Path: /rooms
             Method: post
-
-  loadRoom:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: src/
-      Handler: room.loadRoom
-      Runtime: nodejs18.x
-      MemorySize: 512
-      Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref PokertoolTable
-      Events:
-        CreateRoom:
+        LoadRoom:
           Type: HttpApi
           Properties:
             ApiId: !Ref HttpApiCorsConfig
             Path: /rooms/{id}
             Method: get
-
-  joinRoom:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: src/
-      Handler: room.joinRoom
-      Runtime: nodejs18.x
-      MemorySize: 512
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref PokertoolTable
-      Events:
-        CreateRoom:
+        JoinRoom:
           Type: HttpApi
           Properties:
             ApiId: !Ref HttpApiCorsConfig
             Path: /rooms/{id}/join
             Method: post
-
-  addCard:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: src/
-      Handler: room.addCard
-      Runtime: nodejs18.x
-      MemorySize: 512
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref PokertoolTable
-      Events:
-        CreateRoom:
+        AddRoom:
           Type: HttpApi
           Properties:
             ApiId: !Ref HttpApiCorsConfig
             Path: /rooms/{id}/addCard
+            Method: post
+        CastVote:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiCorsConfig
+            Path: /rooms/{id}/castVote
+            Method: post
+        SelectCard:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiCorsConfig
+            Path: /rooms/{id}/selectCard
             Method: post
 
   PokertoolTable:
@@ -108,3 +98,181 @@ Resources:
       KeySchema:
         - AttributeName: id
           KeyType: HASH
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
+
+  # websocket:
+
+  SimpleChatWebSocket:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: SimpleChatWebSocket
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: "$request.body.action"
+
+  ConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SimpleChatWebSocket
+      RouteKey: $connect
+      AuthorizationType: NONE
+      OperationName: ConnectRoute
+      Target: !Join
+        - '/'
+        - - 'integrations'
+          - !Ref ConnectInteg
+
+  ConnectInteg:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref SimpleChatWebSocket
+      Description: Connect Integration
+      IntegrationType: AWS_PROXY
+      IntegrationUri:
+        Fn::Sub:
+          arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OnConnectFunction.Arn}/invocations
+
+  DisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SimpleChatWebSocket
+      RouteKey: $disconnect
+      AuthorizationType: NONE
+      OperationName: DisconnectRoute
+      Target: !Join
+        - '/'
+        - - 'integrations'
+          - !Ref DisconnectInteg
+
+  DisconnectInteg:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref SimpleChatWebSocket
+      Description: Disconnect Integration
+      IntegrationType: AWS_PROXY
+      IntegrationUri:
+        Fn::Sub:
+          arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OnDisconnectFunction.Arn}/invocations
+
+  SendRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SimpleChatWebSocket
+      RouteKey: sendmessage
+      AuthorizationType: NONE
+      OperationName: SendRoute
+      Target: !Join
+        - '/'
+        - - 'integrations'
+          - !Ref SendInteg
+
+  SendInteg:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref SimpleChatWebSocket
+      Description: Send Integration
+      IntegrationType: AWS_PROXY
+      IntegrationUri:
+        Fn::Sub:
+          arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SendMessageFunction.Arn}/invocations
+
+  Deployment:
+    Type: AWS::ApiGatewayV2::Deployment
+    DependsOn:
+      - ConnectRoute
+      - SendRoute
+      - DisconnectRoute
+    Properties:
+      ApiId: !Ref SimpleChatWebSocket
+
+  Stage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      StageName: Prod
+      Description: Prod Stage
+      DeploymentId: !Ref Deployment
+      ApiId: !Ref SimpleChatWebSocket
+
+  ConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "pokertool_connections"
+      AttributeDefinitions:
+        - AttributeName: "connectionId"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "connectionId"
+          KeyType: "HASH"
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+  #      SSESpecification:
+  #        SSEEnabled: True
+
+  OnConnectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: websocket.connectHandler
+      Runtime: nodejs18.x
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConnectionsTable
+
+  OnConnectPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - SimpleChatWebSocket
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref OnConnectFunction
+      Principal: apigateway.amazonaws.com
+
+  OnDisconnectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: websocket.disconnectHandler
+      Runtime: nodejs18.x
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConnectionsTable
+
+  OnDisconnectPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - SimpleChatWebSocket
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref OnDisconnectFunction
+      Principal: apigateway.amazonaws.com
+
+  SendMessageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: websocket.messageHandler
+      Runtime: nodejs18.x
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConnectionsTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - 'execute-api:ManageConnections'
+              Resource:
+                - !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SimpleChatWebSocket}/*'
+
+  SendMessagePermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - SimpleChatWebSocket
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref SendMessageFunction
+      Principal: apigateway.amazonaws.com
+
+Outputs:
+  WebSocketURI:
+    Description: "The WSS Protocol URI to connect to"
+    Value: !Join [ '', [ 'wss://', !Ref SimpleChatWebSocket, '.execute-api.',!Ref 'AWS::Region','.amazonaws.com/', !Ref 'Stage' ] ]
