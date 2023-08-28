@@ -1,6 +1,13 @@
 import {DynamoDBClient} from "@aws-sdk/client-dynamodb";
-import {DeleteCommand, DynamoDBDocumentClient, PutCommand, ScanCommand} from "@aws-sdk/lib-dynamodb";
-// import {ApiGatewayManagementApi} from 'aws-sdk/apis/webso'
+import {
+    DynamoDBDocumentClient,
+    PutCommand,
+    ScanCommand,
+    DeleteCommand,
+    UpdateCommand
+} from "@aws-sdk/lib-dynamodb";
+import { unmarshall } from '@aws-sdk/util-dynamodb'
+import {ApiGatewayManagementApiClient, PostToConnectionCommand} from '@aws-sdk/client-apigatewaymanagementapi';
 
 const client = new DynamoDBClient({});
 
@@ -31,49 +38,7 @@ export const connectHandler = async (event, context) => {
 export const disconnectHandler = async (event, context) => {
     console.log("DISCONNECTED: ")
     console.log(`ConnectionId: ${event.requestContext.connectionId}`)
-    return { statusCode: 200, body: 'Disconnected.' };
-}
 
-export const messageHandler = async (event, context) => {
-    console.log("MESSAGE HANDLER: ")
-    console.log(`ConnectionId: ${event.requestContext.connectionId}`)
-    return { statusCode: 200, body: 'Message Sent.' };
-}
-
-export const streamUpdate = async (event, context) => {
-    console.log("STREAM UPDATE!")
-
-    event.Records.forEach(function(record) {
-        console.log(record.eventID);
-        console.log(record.eventName);
-        console.log('DynamoDB Record: %j', record.dynamodb);
-    });
-
-    return {
-        statusCode: 200, body: "stream updated"
-    }
-}
-
-const joinRoom = async (event, context) => {
-    let roomConnection = {
-        id: event.requestContext.connectionId
-        , roomId: event.pathParameters.id
-    };
-
-    await dynamo.send(
-        new PutCommand({
-            TableName: tableName,
-            Item: roomConnection
-        })
-    );
-
-    return {
-        'statusCode': 200,
-        'body': "connected"
-    }
-}
-
-const quitRoom = async (event, context) => {
     await dynamo.send(
         new DeleteCommand({
             TableName: tableName,
@@ -83,35 +48,86 @@ const quitRoom = async (event, context) => {
         })
     );
 
-    return {
-        'statusCode': 200,
-        'body': "connection closed"
+    return { statusCode: 200, body: 'Disconnected.' };
+}
+
+export const sendmessageHandler = async (event, context) => {
+    console.log("MESSAGE HANDLER: ")
+    console.log(`ConnectionId: ${event.requestContext.connectionId}`)
+    console.log(`event: %j`, event)
+    console.log(`context: %j`, context)
+
+    let body = JSON.parse(event.body)
+
+    switch (body.payload.type) {
+        case "join":
+            return joinRoom(event.requestContext.connectionId, body.payload.roomId)
+
+        default:
+            return { statusCode: 404, body: `Unknown Payload Type ${body.payload.type}` };
     }
 }
 
-const pushMessage = async (event, context) => {
-    let connections = await dynamo.send(
-        new ScanCommand({
+async function joinRoom(connectionId, roomId) {
+    await dynamo.send(
+        new UpdateCommand({
             TableName: tableName,
-            ProjectionExpression: 'id',
-            FilterExpression: "roomId = :roomId",
+            Key: {
+                connectionId: connectionId,
+            },
+            UpdateExpression: "SET roomId = :roomId",
             ExpressionAttributeValues: {
-                ":roomId": event.pathParameters.id
+                ":roomId": roomId
             }
         })
     );
 
-    console.log(`Event: ${event}`)
+    return { statusCode: 200, body: 'Room joined.' }
+}
 
-    const api = new ApiGatewayManagementApi({
-        // endpoint: process.env.ENDPOINT,
+export const streamUpdate = async (event, context) => {
+    console.log("STREAM UPDATE!")
+
+    const client = new ApiGatewayManagementApiClient({});
+    const input = { // PostToConnectionRequest
+        Data: "BLOB_VALUE", // required
+        ConnectionId: "STRING_VALUE", // required
+    };
+    const command = new PostToConnectionCommand(input);
+    const response = await client.send(command);
+
+    event.Records.forEach(function(record) {
+        console.log(record.eventID);
+        console.log(record.eventName);
+        console.log('DynamoDB Record: %j', record.dynamodb);
+        console.log('DynamoDB Record: %j', unmarshall(record.dynamodb));
+
+        // for each record received,
+        // retrieve all connectionIds given roomId
+        // send new data to all connectionIds.
+        pushMessage(unmarshall(record.dynamodb))
+
     });
 
-    const postCalls = connections.Items.map(async ({Id}) => {
-        await api.postToConnection({ConnectionId: Id, Data: JSON.stringify(event)}).promise();
-    });
+    return {
+        statusCode: 200, body: "stream updated"
+    }
+}
 
-    await Promise.all(postCalls);
+
+const pushMessage = async (room) => {
+    let connections = await dynamo.send(
+        new ScanCommand({
+            TableName: tableName,
+            ProjectionExpression: 'connectionId',
+            FilterExpression: "roomId = :roomId",
+            ExpressionAttributeValues: {
+                ":roomId": room.id
+            }
+        })
+    );
+
+    console.log(`Connection ids: ${connections} `)
 
     return {statusCode: 200, body: 'Event sent.'};
 }

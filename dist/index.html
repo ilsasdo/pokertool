@@ -19,15 +19,17 @@
     // along to the WebSocket.
     app.ports.openWebsocket.subscribe(function (roomId) {
         console.log("Open websocket to: "+ roomId)
-        let socket = new WebSocket('wss://81bdk9r5xc.execute-api.eu-west-1.amazonaws.com/Prod')
+        let socket = new WebSocket("wss://w78h9mubp4.execute-api.eu-west-1.amazonaws.com/Prod")
         socket.addEventListener("open", function (event) {
-            socket.send(JSON.stringify({"action": "joinRoom", "roomId": roomId}))
+            console.log("OPEN!!")
+            socket.send(JSON.stringify({action: "sendmessage", payload: {type: "join", roomId: roomId}}))
+            console.log("Message sent!")
         })
 
         socket.addEventListener("message", function (event) {
             console.log("Message received: ")
             console.log(event)
-            app.ports.roomUpdate.send("message received!")
+            //app.ports.roomUpdate.send("message received!")
         })
     });
 

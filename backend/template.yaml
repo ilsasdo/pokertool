@@ -103,17 +103,17 @@ Resources:
 
   # websocket:
 
-  SimpleChatWebSocket:
+  WebSocket:
     Type: AWS::ApiGatewayV2::Api
     Properties:
-      Name: SimpleChatWebSocket
+      Name: WebSocket
       ProtocolType: WEBSOCKET
       RouteSelectionExpression: "$request.body.action"
 
   ConnectRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref SimpleChatWebSocket
+      ApiId: !Ref WebSocket
       RouteKey: $connect
       AuthorizationType: NONE
       OperationName: ConnectRoute
@@ -125,7 +125,7 @@ Resources:
   ConnectInteg:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref SimpleChatWebSocket
+      ApiId: !Ref WebSocket
       Description: Connect Integration
       IntegrationType: AWS_PROXY
       IntegrationUri:
@@ -135,7 +135,7 @@ Resources:
   DisconnectRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref SimpleChatWebSocket
+      ApiId: !Ref WebSocket
       RouteKey: $disconnect
       AuthorizationType: NONE
       OperationName: DisconnectRoute
@@ -147,7 +147,7 @@ Resources:
   DisconnectInteg:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref SimpleChatWebSocket
+      ApiId: !Ref WebSocket
       Description: Disconnect Integration
       IntegrationType: AWS_PROXY
       IntegrationUri:
@@ -157,7 +157,7 @@ Resources:
   SendRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref SimpleChatWebSocket
+      ApiId: !Ref WebSocket
       RouteKey: sendmessage
       AuthorizationType: NONE
       OperationName: SendRoute
@@ -169,7 +169,7 @@ Resources:
   SendInteg:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref SimpleChatWebSocket
+      ApiId: !Ref WebSocket
       Description: Send Integration
       IntegrationType: AWS_PROXY
       IntegrationUri:
@@ -183,7 +183,7 @@ Resources:
       - SendRoute
       - DisconnectRoute
     Properties:
-      ApiId: !Ref SimpleChatWebSocket
+      ApiId: !Ref WebSocket
 
   Stage:
     Type: AWS::ApiGatewayV2::Stage
@@ -191,7 +191,7 @@ Resources:
       StageName: Prod
       Description: Prod Stage
       DeploymentId: !Ref Deployment
-      ApiId: !Ref SimpleChatWebSocket
+      ApiId: !Ref WebSocket
 
   ConnectionsTable:
     Type: AWS::DynamoDB::Table
@@ -206,8 +206,6 @@ Resources:
       ProvisionedThroughput:
         ReadCapacityUnits: 5
         WriteCapacityUnits: 5
-  #      SSESpecification:
-  #        SSEEnabled: True
 
   OnConnectFunction:
     Type: AWS::Serverless::Function
@@ -222,7 +220,7 @@ Resources:
   OnConnectPermission:
     Type: AWS::Lambda::Permission
     DependsOn:
-      - SimpleChatWebSocket
+      - WebSocket
     Properties:
       Action: lambda:InvokeFunction
       FunctionName: !Ref OnConnectFunction
@@ -241,7 +239,7 @@ Resources:
   OnDisconnectPermission:
     Type: AWS::Lambda::Permission
     DependsOn:
-      - SimpleChatWebSocket
+      - WebSocket
     Properties:
       Action: lambda:InvokeFunction
       FunctionName: !Ref OnDisconnectFunction
@@ -251,22 +249,24 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/
-      Handler: websocket.messageHandler
+      Handler: websocket.sendmessageHandler
       Runtime: nodejs18.x
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ConnectionsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PokertoolTable
         - Statement:
             - Effect: Allow
               Action:
                 - 'execute-api:ManageConnections'
               Resource:
-                - !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SimpleChatWebSocket}/*'
+                - !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocket}/*'
 
   SendMessagePermission:
     Type: AWS::Lambda::Permission
     DependsOn:
-      - SimpleChatWebSocket
+      - WebSocket
     Properties:
       Action: lambda:InvokeFunction
       FunctionName: !Ref SendMessageFunction
@@ -275,4 +275,4 @@ Resources:
 Outputs:
   WebSocketURI:
     Description: "The WSS Protocol URI to connect to"
-    Value: !Join [ '', [ 'wss://', !Ref SimpleChatWebSocket, '.execute-api.',!Ref 'AWS::Region','.amazonaws.com/', !Ref 'Stage' ] ]
+    Value: !Join [ '', [ 'wss://', !Ref WebSocket, '.execute-api.', !Ref 'AWS::Region', '.amazonaws.com/', !Ref 'Stage' ] ]

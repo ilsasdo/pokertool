@@ -13,8 +13,10 @@
     "test": "mocha tests/unit/"
   },
   "devDependencies": {
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.398.0",
     "@aws-sdk/client-dynamodb": "^3.395.0",
     "@aws-sdk/lib-dynamodb": "^3.395.0",
+    "@aws-sdk/util-dynamodb": "^3.398.0",
     "chai": "^4.3.6",
     "mocha": "^10.1.0"
   }
