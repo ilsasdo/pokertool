@@ -1,0 +1,44 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Resources:
+  PokertoolApi:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: rust-cargolambda
+    Properties:
+      CodeUri: .
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Architectures:
+        - arm64
+      Events:
+        ApiEvent:
+          Type: HttpApi
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref PokertoolTable
+      Policies:
+        - DynamoDBWritePolicy:
+            TableName: !Ref PokertoolTable
+
+  PokertoolTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: "Id"
+          KeyType: "HASH"
+        - AttributeName: "Timestamp"
+          KeyType: "RANGE"
+      AttributeDefinitions:
+        - AttributeName: "Id"
+          AttributeType: "S"
+        - AttributeName: "Timestamp"
+          AttributeType: "S"
+
+Outputs:
+  HttpApiEndpoint:
+    Value: !Ref ServerlessHttpApi

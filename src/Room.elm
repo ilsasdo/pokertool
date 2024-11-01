@@ -1,25 +1,14 @@
 module Room exposing (..)
 
-import Dict exposing (Dict)
 import Http
-import Json.Decode as Decode exposing (Decoder, field, int, list, string)
+import Json.Decode as Decode exposing (Decoder, field, list, string)
 import Json.Encode as Encode
 
 
 type alias Room =
     { id : String
-    , name : String
     , rootUser : Username
     , partecipants : List Username
-    , cardToVote : Maybe String
-    , cards : List Card
-    }
-
-
-type alias Card =
-    { id : String
-    , name : String
-    , votes : Dict Username Int
     }
 
 
@@ -62,22 +51,14 @@ addCard roomId cardname event =
         }
 
 
-selectCard : Card -> (Result Http.Error Room -> a) -> Room -> Cmd a
-selectCard card event room =
-    Http.post
-        { url = urlAddress ("/rooms/" ++ room.id ++ "/selectCard")
-        , body = Http.jsonBody (selectCardEncoder card.id)
-        , expect = Http.expectJson event (roomDecoder Room)
-        }
 
-
-castVote : String -> Card -> Int -> (Result Http.Error Room -> a) -> Room -> Cmd a
-castVote username card vote event room =
-    Http.post
-        { url = urlAddress ("/rooms/" ++ room.id ++ "/castVote")
-        , body = Http.jsonBody (castVoteEncoder (getCardIndex card.id room.cards) username vote)
-        , expect = Http.expectJson event (roomDecoder Room)
-        }
+--castVote : String -> Card -> Int -> (Result Http.Error Room -> a) -> Room -> Cmd a
+--castVote username card vote event room =
+--    Http.post
+--        { url = urlAddress ("/rooms/" ++ room.id ++ "/castVote")
+--        , body = Http.jsonBody (castVoteEncoder (getCardIndex card.id room.cards) username vote)
+--        , expect = Http.expectJson event (roomDecoder Room)
+--        }
 
 
 selectCardEncoder cardId =
@@ -114,34 +95,7 @@ joinRoomEncoder username =
 
 
 roomDecoder a =
-    Decode.map6 a
+    Decode.map3 a
         (field "id" string)
-        (field "name" string)
         (field "rootUser" string)
         (field "partecipants" (list string))
-        (Decode.maybe (field "selectedCard" string))
-        (field "cards" (list cardDecoder))
-
-
-cardDecoder =
-    Decode.map3 Card
-        (field "id" string)
-        (field "name" string)
-        (field "votes" (Decode.dict int))
-
-
-getCardToVote : Room -> Maybe Card
-getCardToVote room =
-    room.cards
-        |> List.filter (.id >> (==) (room.cardToVote |> Maybe.withDefault ""))
-        |> List.head
-
-
-getCardIndex : String -> List Card -> Int
-getCardIndex cardId cards =
-    cards
-        |> List.indexedMap Tuple.pair
-        |> List.filter (Tuple.second >> .id >> (==) cardId)
-        |> List.map Tuple.first
-        |> List.head
-        |> Maybe.withDefault 0

@@ -15,12 +15,12 @@ lint = true
 
 [default.deploy.parameters]
 capabilities = "CAPABILITY_IAM"
-confirm_changeset = false
+confirm_changeset = true
 resolve_s3 = true
 profile = "ilsasdo"
 s3_prefix = "pokertool"
 region = "eu-west-1"
-disable_rollback = false
+disable_rollback = true
 image_repositories = []
 
 [default.package.parameters]
