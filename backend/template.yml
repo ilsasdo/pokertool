@@ -31,13 +31,10 @@ Resources:
       KeySchema:
         - AttributeName: "Id"
           KeyType: "HASH"
-        - AttributeName: "Timestamp"
-          KeyType: "RANGE"
       AttributeDefinitions:
         - AttributeName: "Id"
           AttributeType: "S"
-        - AttributeName: "Timestamp"
-          AttributeType: "S"
+
 
 Outputs:
   HttpApiEndpoint:
