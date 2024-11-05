@@ -1,10 +1,10 @@
 use aws_config::meta::region::RegionProviderChain;
 use aws_config::BehaviorVersion;
-use lambda_http::{run, service_fn, tracing, Body, Error, Request, Response};
+use lambda_http::{run, service_fn, tracing, Body, Error, Request, RequestExt, Response};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
-use aws_sdk_dynamodb::types::ReturnValue;
+use aws_sdk_dynamodb::types::{AttributeValue, ReturnValue};
 use serde_dynamo::aws_sdk_dynamodb_1::from_item;
 use serde_dynamo::to_item;
 use uuid::Uuid;
@@ -26,49 +26,35 @@ pub struct PokerRoom {
     members: HashMap<String, u16>
 }
 
-// async fn join_room(config: &HandlerConfig, request: &Request) -> Result<Response<Body>, Error> {
-//     let room_uuid = request
-//         .query_string_parameters_ref()
-//         .and_then(|params| params.first("room"))
-//         .unwrap();
-//     let user = request
-//         .query_string_parameters_ref()
-//         .and_then(|params| params.first("user"))
-//         .unwrap();
-//
-//     let mut new_room = HashMap::new();
-//     let uuid = Uuid::new_v4();
-//     new_room.insert("Id".to_string(), AttributeValue::S(uuid.to_string()));
-//     new_room.insert("Members".to_string(), AttributeValue::L(vec![]));
-//
-//     let mut user_map = HashMap::new();
-//     user_map.insert("Username".to_string(), AttributeValue::S(user.to_string()));
-//     user_map.insert("Vote".to_string(), AttributeValue::N(0.to_string()));
-//
-//     let _update_result = config
-//         .dynamodb_client
-//         .update_item()
-//         .table_name(config.table_name.as_str())
-//         .key("Id", AttributeValue::S(room_uuid.to_string()))
-//         .update_expression("set #Members = list_append(#Members, :value)")
-//         .expression_attribute_names("#Members", "Members")
-//         .expression_attribute_values(":value", AttributeValue::L(vec![AttributeValue::M(user_map)]))
-//         .return_values(ReturnValue::AllNew)
-//         .send()
-//         .await?;
-//
-//     // let attributes = update_result.attributes().unwrap();
-//
-//     // let created_room = json!({
-//     //     "id": attributes.get("Id").unwrap().to_string(),
-//     //     "members": attributes.get("Members").to_string()
-//     // });
-//
-//     let poker_room = PokerRoom {
-//         id: "12",
-//     };
-//     ok("ok".to_string())
-// }
+async fn join_room(config: &HandlerConfig, request: &Request) -> Result<Response<Body>, Error> {
+    let room_uuid = request
+        .query_string_parameters_ref()
+        .and_then(|params| params.first("room"))
+        .unwrap();
+    let user = request
+        .query_string_parameters_ref()
+        .and_then(|params| params.first("user"))
+        .unwrap();
+
+    let mut user_map = HashMap::new();
+    user_map.insert(user.to_string(), AttributeValue::N(0.to_string()));
+
+    let update_result = config
+        .dynamodb_client
+        .update_item()
+        .table_name(config.table_name.as_str())
+        .key("Id", AttributeValue::S(room_uuid.to_string()))
+        .update_expression("set Members.#Username = :value")
+        .expression_attribute_names("#Username", user.to_string())
+        .expression_attribute_values(":value", AttributeValue::N("0".to_string()))
+        .return_values(ReturnValue::AllNew)
+        .send()
+        .await?;
+
+    let attributes = update_result.attributes().unwrap();
+    let response:PokerRoom = from_item(attributes.clone())?;
+    ok(response)
+}
 
 async fn create_room(config: &HandlerConfig) -> Result<Response<Body>, Error> {
     let uuid = Uuid::new_v4();
@@ -120,7 +106,7 @@ async fn function_handler(config: &HandlerConfig, event: Request) -> Result<Resp
 
     return match uri {
         "/create" => create_room(config).await,
-        // "/join" => join_room(config, &event).await,
+        "/join" => join_room(config, &event).await,
         // "/vote" => join_room(config, &event).await,
         // "/reveal" => join_room(config, &event).await,
         // "/room" => join_room(config, &event).await,
