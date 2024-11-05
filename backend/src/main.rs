@@ -1,12 +1,12 @@
 use aws_config::meta::region::RegionProviderChain;
 use aws_config::BehaviorVersion;
+use aws_sdk_dynamodb::types::{AttributeValue, ReturnValue};
 use lambda_http::{run, service_fn, tracing, Body, Error, Request, RequestExt, Response};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::env;
-use aws_sdk_dynamodb::types::{AttributeValue, ReturnValue};
 use serde_dynamo::aws_sdk_dynamodb_1::from_item;
 use serde_dynamo::to_item;
+use std::collections::HashMap;
+use std::env;
 use uuid::Uuid;
 
 struct HandlerConfig {
@@ -14,16 +14,33 @@ struct HandlerConfig {
     dynamodb_client: aws_sdk_dynamodb::Client,
 }
 
-struct User {
-    name: String,
-    vote: u16
-}
-
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct PokerRoom {
     id: String,
-    members: HashMap<String, u16>
+    revealed: bool,
+    members: HashMap<String, u16>,
+}
+
+async fn create_room(config: &HandlerConfig) -> Result<Response<Body>, Error> {
+    let uuid = Uuid::new_v4();
+    let poker_room = PokerRoom {
+        id: uuid.to_string(),
+        revealed: false,
+        members: HashMap::new(),
+    };
+
+    let item = to_item(&poker_room).unwrap();
+
+    config
+        .dynamodb_client
+        .put_item()
+        .table_name(config.table_name.as_str())
+        .set_item(Some(item))
+        .send()
+        .await?;
+
+    ok(poker_room)
 }
 
 async fn join_room(config: &HandlerConfig, request: &Request) -> Result<Response<Body>, Error> {
@@ -35,9 +52,6 @@ async fn join_room(config: &HandlerConfig, request: &Request) -> Result<Response
         .query_string_parameters_ref()
         .and_then(|params| params.first("user"))
         .unwrap();
-
-    let mut user_map = HashMap::new();
-    user_map.insert(user.to_string(), AttributeValue::N(0.to_string()));
 
     let update_result = config
         .dynamodb_client
@@ -52,30 +66,128 @@ async fn join_room(config: &HandlerConfig, request: &Request) -> Result<Response
         .await?;
 
     let attributes = update_result.attributes().unwrap();
-    let response:PokerRoom = from_item(attributes.clone())?;
+    let response: PokerRoom = from_item(attributes.clone())?;
     ok(response)
 }
 
-async fn create_room(config: &HandlerConfig) -> Result<Response<Body>, Error> {
-    let uuid = Uuid::new_v4();
-    let poker_room = PokerRoom {
-        id: uuid.to_string(),
-        members: HashMap::new(),
-    };
+async fn exit_room(config: &HandlerConfig, request: &Request) -> Result<Response<Body>, Error> {
+    let room_uuid = request
+        .query_string_parameters_ref()
+        .and_then(|params| params.first("room"))
+        .unwrap();
+    let user = request
+        .query_string_parameters_ref()
+        .and_then(|params| params.first("user"))
+        .unwrap();
 
-    let item = to_item(&poker_room).unwrap();
-
-    let insert_result = config
+    let update_result = config
         .dynamodb_client
-        .put_item()
+        .update_item()
         .table_name(config.table_name.as_str())
-        .set_item(Some(item))
+        .key("Id", AttributeValue::S(room_uuid.to_string()))
+        .update_expression("remove Members.#Username")
+        .expression_attribute_names("#Username", user.to_string())
+        .return_values(ReturnValue::AllNew)
         .send()
         .await?;
 
-    // let attribute = insert_result.attributes().unwrap();
-    // let inserted_item = from_item(attribute.clone()).unwrap();
-    ok(poker_room)
+    let attributes = update_result.attributes().unwrap();
+    let response: PokerRoom = from_item(attributes.clone())?;
+    ok(response)
+}
+
+async fn vote(config: &HandlerConfig, request: &Request) -> Result<Response<Body>, Error> {
+    let room_uuid = request
+        .query_string_parameters_ref()
+        .and_then(|params| params.first("room"))
+        .unwrap();
+    let user = request
+        .query_string_parameters_ref()
+        .and_then(|params| params.first("user"))
+        .unwrap();
+    let vote = request
+        .query_string_parameters_ref()
+        .and_then(|params| params.first("vote"))
+        .unwrap();
+
+    let update_result = config
+        .dynamodb_client
+        .update_item()
+        .table_name(config.table_name.as_str())
+        .key("Id", AttributeValue::S(room_uuid.to_string()))
+        .update_expression("set Members.#Username = :value")
+        .expression_attribute_names("#Username", user.to_string())
+        .expression_attribute_values(":value", AttributeValue::N(vote.to_string()))
+        .return_values(ReturnValue::AllNew)
+        .send()
+        .await?;
+
+    let attributes = update_result.attributes().unwrap();
+    let response: PokerRoom = from_item(attributes.clone())?;
+    ok(response)
+}
+
+async fn reveal(config: &HandlerConfig, request: &Request) -> Result<Response<Body>, Error> {
+    let room_uuid = request
+        .query_string_parameters_ref()
+        .and_then(|params| params.first("room"))
+        .unwrap();
+
+    let update_result = config
+        .dynamodb_client
+        .update_item()
+        .table_name(config.table_name.as_str())
+        .key("Id", AttributeValue::S(room_uuid.to_string()))
+        .update_expression("set Revealed = :value")
+        .expression_attribute_values(":value", AttributeValue::Bool(true))
+        .return_values(ReturnValue::AllNew)
+        .send()
+        .await?;
+
+    let attributes = update_result.attributes().unwrap();
+    let response: PokerRoom = from_item(attributes.clone())?;
+    ok(response)
+}
+
+async fn reset(config: &HandlerConfig, request: &Request) -> Result<Response<Body>, Error> {
+    let room_uuid = request
+        .query_string_parameters_ref()
+        .and_then(|params| params.first("room"))
+        .unwrap();
+
+    let update_result = config
+        .dynamodb_client
+        .update_item()
+        .table_name(config.table_name.as_str())
+        .key("Id", AttributeValue::S(room_uuid.to_string()))
+        .update_expression("set Revealed = :value")
+        .expression_attribute_values(":value", AttributeValue::Bool(false))
+        .return_values(ReturnValue::AllNew)
+        .send()
+        .await?;
+
+    let attributes = update_result.attributes().unwrap();
+    let response: PokerRoom = from_item(attributes.clone())?;
+    ok(response)
+}
+
+async fn get_room(config: &HandlerConfig, request: &Request) -> Result<Response<Body>, Error> {
+    let room_uuid = request
+        .query_string_parameters_ref()
+        .and_then(|params| params.first("room"))
+        .unwrap();
+
+    let get_result = config
+        .dynamodb_client
+        .get_item()
+        .table_name(config.table_name.as_str())
+        .key("Id", AttributeValue::S(room_uuid.to_string()))
+        .send()
+        .await?;
+
+    let attributes = get_result.item.unwrap();
+    let response: PokerRoom = from_item(attributes.clone())?;
+    ok(response)
 }
 
 fn not_found() -> Result<Response<Body>, Error> {
@@ -107,47 +219,14 @@ async fn function_handler(config: &HandlerConfig, event: Request) -> Result<Resp
     return match uri {
         "/create" => create_room(config).await,
         "/join" => join_room(config, &event).await,
-        // "/vote" => join_room(config, &event).await,
-        // "/reveal" => join_room(config, &event).await,
-        // "/room" => join_room(config, &event).await,
+        "/vote" => vote(config, &event).await,
+        "/reveal" => reveal(config, &event).await,
+        "/reset" => reset(config, &event).await,
+        "/exit" => exit_room(config, &event).await,
+        "/room" => get_room(config, &event).await,
         _ => not_found()
     };
 }
-
-//     // Extract some useful information from the request
-//     let who = event
-//         .query_string_parameters_ref()
-//         .and_then(|params| params.first("name"))
-//         .unwrap_or("world");
-//     let vote = event
-//         .query_string_parameters_ref()
-//         .and_then(|params| params.first("vote"))
-//         .unwrap_or("1");
-//     let message = format!("Hello {who}, {uri} this is an AWS Lambda HTTP request");
-//
-//     let mut item = HashMap::new();
-//     let uuid = Uuid::new_v4();
-//     item.insert("Id".to_string(), AttributeValue::S(uuid.to_string()));
-//     item.insert("Name".to_string(), AttributeValue::S(who.to_owned()));
-//     item.insert("Vote".to_string(), AttributeValue::N(vote.to_owned()));
-//
-//     let insert_result = config
-//         .dynamodb_client
-//         .put_item()
-//         .table_name(config.table_name.as_str())
-//         .set_item(Some(item))
-//         .send()
-//         .await?;
-//
-//     // Return something that implements IntoResponse.
-//     // It will be serialized to the right response event automatically by the runtime
-//     let resp = Response::builder()
-//         .status(200)
-//         .header("content-type", "text/html")
-//         .body(message.into())
-//         .map_err(Box::new)?;
-//     Ok(resp)
-// }
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
