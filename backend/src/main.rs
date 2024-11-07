@@ -7,6 +7,7 @@ use serde_dynamo::aws_sdk_dynamodb_1::from_item;
 use serde_dynamo::to_item;
 use std::collections::HashMap;
 use std::env;
+use std::fmt::format;
 use uuid::Uuid;
 
 struct HandlerConfig {
@@ -43,16 +44,7 @@ async fn create_room(config: &HandlerConfig) -> Result<Response<Body>, Error> {
     ok(poker_room)
 }
 
-async fn join_room(config: &HandlerConfig, request: &Request) -> Result<Response<Body>, Error> {
-    let room_uuid = request
-        .query_string_parameters_ref()
-        .and_then(|params| params.first("room"))
-        .unwrap();
-    let user = request
-        .query_string_parameters_ref()
-        .and_then(|params| params.first("user"))
-        .unwrap();
-
+async fn join_room(config: &HandlerConfig, room_uuid: &str, user: &str) -> Result<Response<Body>, Error> {
     let update_result = config
         .dynamodb_client
         .update_item()
@@ -70,16 +62,7 @@ async fn join_room(config: &HandlerConfig, request: &Request) -> Result<Response
     ok(response)
 }
 
-async fn exit_room(config: &HandlerConfig, request: &Request) -> Result<Response<Body>, Error> {
-    let room_uuid = request
-        .query_string_parameters_ref()
-        .and_then(|params| params.first("room"))
-        .unwrap();
-    let user = request
-        .query_string_parameters_ref()
-        .and_then(|params| params.first("user"))
-        .unwrap();
-
+async fn exit_room(config: &HandlerConfig, room_uuid: &str, user: &str) -> Result<Response<Body>, Error> {
     let update_result = config
         .dynamodb_client
         .update_item()
@@ -96,20 +79,7 @@ async fn exit_room(config: &HandlerConfig, request: &Request) -> Result<Response
     ok(response)
 }
 
-async fn vote(config: &HandlerConfig, request: &Request) -> Result<Response<Body>, Error> {
-    let room_uuid = request
-        .query_string_parameters_ref()
-        .and_then(|params| params.first("room"))
-        .unwrap();
-    let user = request
-        .query_string_parameters_ref()
-        .and_then(|params| params.first("user"))
-        .unwrap();
-    let vote = request
-        .query_string_parameters_ref()
-        .and_then(|params| params.first("vote"))
-        .unwrap();
-
+async fn cast_vote(config: &HandlerConfig, room_uuid: &str, user: &str, vote: &str) -> Result<Response<Body>, Error> {
     let update_result = config
         .dynamodb_client
         .update_item()
@@ -127,12 +97,7 @@ async fn vote(config: &HandlerConfig, request: &Request) -> Result<Response<Body
     ok(response)
 }
 
-async fn reveal(config: &HandlerConfig, request: &Request) -> Result<Response<Body>, Error> {
-    let room_uuid = request
-        .query_string_parameters_ref()
-        .and_then(|params| params.first("room"))
-        .unwrap();
-
+async fn reveal(config: &HandlerConfig, room_uuid: &str) -> Result<Response<Body>, Error> {
     let update_result = config
         .dynamodb_client
         .update_item()
@@ -149,12 +114,7 @@ async fn reveal(config: &HandlerConfig, request: &Request) -> Result<Response<Bo
     ok(response)
 }
 
-async fn reset(config: &HandlerConfig, request: &Request) -> Result<Response<Body>, Error> {
-    let room_uuid = request
-        .query_string_parameters_ref()
-        .and_then(|params| params.first("room"))
-        .unwrap();
-
+async fn reset(config: &HandlerConfig, room_uuid: &str) -> Result<Response<Body>, Error> {
     let update_result = config
         .dynamodb_client
         .update_item()
@@ -171,12 +131,7 @@ async fn reset(config: &HandlerConfig, request: &Request) -> Result<Response<Bod
     ok(response)
 }
 
-async fn get_room(config: &HandlerConfig, request: &Request) -> Result<Response<Body>, Error> {
-    let room_uuid = request
-        .query_string_parameters_ref()
-        .and_then(|params| params.first("room"))
-        .unwrap();
-
+async fn get_room(config: &HandlerConfig, room_uuid: &str) -> Result<Response<Body>, Error> {
     let get_result = config
         .dynamodb_client
         .get_item()
@@ -190,11 +145,12 @@ async fn get_room(config: &HandlerConfig, request: &Request) -> Result<Response<
     ok(response)
 }
 
-fn not_found() -> Result<Response<Body>, Error> {
+fn not_found(uri: &str) -> Result<Response<Body>, Error> {
+    let body = format!("Not found: {}", uri);
     let resp = Response::builder()
         .status(404)
         .header("content-type", "text/html")
-        .body("".into())
+        .body(body.into())
         .map_err(Box::new)?;
     Ok(resp)
 }
@@ -213,19 +169,29 @@ fn ok(message: PokerRoom) -> Result<Response<Body>, Error> {
 /// Write your code inside it.
 /// There are some code example in the following URLs:
 /// - https://github.com/awslabs/aws-lambda-rust-runtime/tree/main/examples
-async fn function_handler(config: &HandlerConfig, event: Request) -> Result<Response<Body>, Error> {
-    let uri = event.uri().path();
+async fn function_handler(config: &HandlerConfig, request: Request) -> Result<Response<Body>, Error> {
+    let uri = request.uri().path();
+    let method = request.method().as_str();
+    let room_id = request
+        .query_string_parameters_ref()
+        .and_then(|params| params.first("id"));
+    let user = request
+        .query_string_parameters_ref()
+        .and_then(|params| params.first("user"));
+    let vote = request
+        .query_string_parameters_ref()
+        .and_then(|params| params.first("vote"));
 
-    return match uri {
-        "/create" => create_room(config).await,
-        "/join" => join_room(config, &event).await,
-        "/vote" => vote(config, &event).await,
-        "/reveal" => reveal(config, &event).await,
-        "/reset" => reset(config, &event).await,
-        "/exit" => exit_room(config, &event).await,
-        "/room" => get_room(config, &event).await,
-        _ => not_found()
-    };
+    match (method, uri) {
+        ("PUT", "/room") => create_room(config).await,
+        ("POST", "/room/join") => join_room(config, room_id.unwrap(), user.unwrap()).await,
+        ("POST", "/room/vote") => cast_vote(config, room_id.unwrap(), user.unwrap(), vote.unwrap()).await,
+        ("POST", "/room/reveal") => reveal(config, room_id.unwrap()).await,
+        ("POST", "/room/reset") => reset(config, room_id.unwrap()).await,
+        ("POST", "/room/leave") => exit_room(config, room_id.unwrap(), user.unwrap()).await,
+        ("GET", "/room") => get_room(config, room_id.unwrap()).await,
+        _ => not_found(uri)
+    }
 }
 
 #[tokio::main]

@@ -19,7 +19,7 @@ Resources:
         Variables:
           TABLE_NAME: !Ref PokertoolTable
       Policies:
-        - DynamoDBWritePolicy:
+        - DynamoDBCrudPolicy:
             TableName: !Ref PokertoolTable
 
   PokertoolTable:
