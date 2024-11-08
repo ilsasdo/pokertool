@@ -10,9 +10,21 @@
 <div id="app"></div>
 <script>
     let app = Elm.Pokertool.init({
-        flags: new URLSearchParams(window.location.search).get("roomId") || "",
+        flags: new URLSearchParams(window.location.search).get("id"),
         node: document.getElementById('app')
     });
+
+    // Inform app of browser navigation (the BACK and FORWARD buttons)
+    // window.addEventListener('popstate', function () {
+    //     app.ports.onUrlChange.send(location.href);
+    // });
+
+    // Change the URL upon request, inform app of the change.
+    // app.ports.pushUrl.subscribe(function(url) {
+    //     history.pushState({}, '', url);
+    //     app.ports.onUrlChange.send(location.href);
+    // });
+
     // When a command goes to the `sendMessage` port, we pass the message
     // along to the WebSocket.
     app.ports.openWebsocket.subscribe(function (roomId) {

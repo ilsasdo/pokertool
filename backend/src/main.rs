@@ -183,7 +183,7 @@ async fn function_handler(config: &HandlerConfig, request: Request) -> Result<Re
         .and_then(|params| params.first("vote"));
 
     match (method, uri) {
-        ("PUT", "/room") => create_room(config).await,
+        ("POST", "/room") => create_room(config).await,
         ("POST", "/room/join") => join_room(config, room_id.unwrap(), user.unwrap()).await,
         ("POST", "/room/vote") => cast_vote(config, room_id.unwrap(), user.unwrap(), vote.unwrap()).await,
         ("POST", "/room/reveal") => reveal(config, room_id.unwrap()).await,
