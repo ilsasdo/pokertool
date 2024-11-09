@@ -130,6 +130,14 @@ update msg model =
                         ValueBar.ClickValue vote ->
                             ( model, Room.castVote loadedRoom.room.id loadedRoom.room.user vote GotRoom )
 
+                GotRoom result ->
+                    case result of
+                        Ok room ->
+                            ( FullLoadedRoomState (initFullRoom room room.user), Cmd.none )
+
+                        Err _ ->
+                            ( model, Cmd.none )
+
                 _ ->
                     ( model, Cmd.none )
 
@@ -174,6 +182,16 @@ askUser model =
 viewRoom : LoadedRoom -> Html Msg
 viewRoom model =
     Html.div []
-        [ text ("hello, " ++ model.user.name ++ model.room.id)
+        [ Html.p [] [ text ("hello, " ++ model.user.name) ]
+        , Html.p [] [ text ("room id: " ++ model.room.id) ]
         , ValueBar.view model.values |> Html.map CastVote
+        , viewMembers model.room.members
         ]
+
+
+viewMembers members =
+    Html.ul [] (List.map viewMember members)
+
+
+viewMember member =
+    Html.li [] [ text (Tuple.first member ++ ": " ++ String.fromInt (Tuple.second member)) ]
