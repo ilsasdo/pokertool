@@ -57,6 +57,8 @@ type Msg
     | GotRoom (Result Http.Error Room)
     | InputUser String
     | JoinRoom
+    | Reveal
+    | Reset
 
 
 
@@ -130,6 +132,12 @@ update msg model =
                         ValueBar.ClickValue vote ->
                             ( model, Room.castVote loadedRoom.room.id loadedRoom.room.user vote GotRoom )
 
+                Reveal ->
+                    ( model, Room.reveal loadedRoom.room.id loadedRoom.room.user GotRoom )
+
+                Reset ->
+                    ( model, Room.reset loadedRoom.room.id loadedRoom.room.user GotRoom )
+
                 GotRoom result ->
                     case result of
                         Ok room ->
@@ -185,13 +193,31 @@ viewRoom model =
         [ Html.p [] [ text ("hello, " ++ model.user.name) ]
         , Html.p [] [ text ("room id: " ++ model.room.id) ]
         , ValueBar.view model.values |> Html.map CastVote
-        , viewMembers model.room.members
+        , viewMembers model.room
+        , viewRevealButton model
         ]
 
 
-viewMembers members =
-    Html.ul [] (List.map viewMember members)
+viewMembers room =
+    Html.ul [] (List.map (viewMember room.revealed) (room.members |> List.sortBy (\t -> t.username)))
 
 
-viewMember member =
-    Html.li [] [ text (Tuple.first member ++ ": " ++ String.fromInt (Tuple.second member)) ]
+viewMember revealed member =
+    Html.li [] [ text (member.username ++ ": "), viewVote revealed member.vote ]
+
+
+viewVote revealed vote =
+    if revealed then
+        text (String.fromInt vote)
+
+    else
+        text "hidden"
+
+
+viewRevealButton : LoadedRoom -> Html Msg
+viewRevealButton model =
+    if model.room.revealed then
+        Html.p [] [ Html.button [ onClick Reset ] [ text "Reset" ] ]
+
+    else
+        Html.p [] [ Html.button [ onClick Reveal ] [ text "Reveal" ] ]

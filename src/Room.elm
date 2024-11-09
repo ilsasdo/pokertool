@@ -1,15 +1,14 @@
 module Room exposing (..)
 
 import Http exposing (Error)
-import Json.Decode as Decode exposing (Decoder, bool, dict, field, int, keyValuePairs, list, string)
-import Json.Encode as Encode
+import Json.Decode as Decode exposing (Decoder, andThen, bool, dict, field, int, keyValuePairs, list, string)
 
 
 type alias Room =
     { user : String
     , id : String
     , revealed : Bool
-    , members : List ( String, Int )
+    , members : List Member
     }
 
 
@@ -53,8 +52,39 @@ castVote roomId user vote event =
         }
 
 
+reveal roomId user event =
+    Http.post
+        { url = urlAddress "/reveal?id=" ++ roomId
+        , body = Http.emptyBody
+        , expect = Http.expectJson event (roomDecoder (Room user))
+        }
+
+
+reset roomId user event =
+    Http.post
+        { url = urlAddress "/reset?id=" ++ roomId
+        , body = Http.emptyBody
+        , expect = Http.expectJson event (roomDecoder (Room user))
+        }
+
+
 roomDecoder a =
     Decode.map3 a
         (field "Id" string)
         (field "Revealed" bool)
-        (field "Members" (keyValuePairs int))
+        (field "Members" membersDecoder)
+
+
+membersDecoder : Decoder (List Member)
+membersDecoder =
+    Decode.keyValuePairs int |> Decode.map toMembers
+
+
+toMembers : List ( String, Int ) -> List Member
+toMembers =
+    List.map toMember
+
+
+toMember : ( String, Int ) -> Member
+toMember m =
+    Member (Tuple.first m) (Tuple.second m)
