@@ -1,7 +1,7 @@
 module Room exposing (..)
 
 import Http exposing (Error)
-import Json.Decode as Decode exposing (Decoder, andThen, bool, dict, field, int, keyValuePairs, list, string)
+import Json.Decode as Decode exposing (Decoder, bool, field, int, string)
 
 
 type alias Room =

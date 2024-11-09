@@ -7,7 +7,6 @@ import Html.Events exposing (onClick, onInput)
 import Http
 import Room exposing (Room)
 import Url exposing (Url)
-import ValueBar
 
 
 main =
@@ -51,7 +50,7 @@ emptyModel roomId =
 
 
 type Msg
-    = CastVote ValueBar.Msg
+    = CastVote Int
     | Request String
     | CreateRoom
     | GotRoom (Result Http.Error Room)
@@ -127,10 +126,8 @@ update msg model =
 
         FullLoadedRoomState loadedRoom ->
             case msg of
-                CastVote value ->
-                    case value of
-                        ValueBar.ClickValue vote ->
-                            ( model, Room.castVote loadedRoom.room.id loadedRoom.room.user vote GotRoom )
+                CastVote vote ->
+                    ( model, Room.castVote loadedRoom.room.id loadedRoom.room.user vote GotRoom )
 
                 Reveal ->
                     ( model, Room.reveal loadedRoom.room.id loadedRoom.room.user GotRoom )
@@ -192,7 +189,7 @@ viewRoom model =
     Html.div []
         [ Html.p [] [ text ("hello, " ++ model.user.name) ]
         , Html.p [] [ text ("room id: " ++ model.room.id) ]
-        , ValueBar.view model.values |> Html.map CastVote
+        , viewValueBar model.values
         , viewMembers model.room
         , viewRevealButton model
         ]
@@ -221,3 +218,17 @@ viewRevealButton model =
 
     else
         Html.p [] [ Html.button [ onClick Reveal ] [ text "Reveal" ] ]
+
+
+viewValueBar : List Int -> Html Msg
+viewValueBar values =
+    Html.div []
+        (List.map
+            valueButton
+            values
+        )
+
+
+valueButton : Int -> Html Msg
+valueButton i =
+    Html.button [ Html.Attributes.type_ "button", Html.Events.onClick (CastVote i) ] [ text (String.fromInt i) ]
