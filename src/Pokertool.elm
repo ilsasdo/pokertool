@@ -5,7 +5,9 @@ import Html exposing (Html, text)
 import Html.Attributes exposing (type_, value)
 import Html.Events exposing (onClick, onInput)
 import Http
-import Room exposing (Room)
+import Random
+import Room exposing (Room, User, UserVote)
+import UUID exposing (UUID)
 import Url exposing (Url)
 
 
@@ -19,7 +21,7 @@ main =
 
 
 type alias LoadingRoom =
-    { inputUser : String, roomId : Maybe String, user : Maybe User }
+    { inputUser : String, roomId : Maybe String, user : Maybe User, userUuid : String }
 
 
 type alias LoadedRoom =
@@ -34,19 +36,9 @@ type Model
     | FullLoadedRoomState LoadedRoom
 
 
-type alias Member =
-    { user : User
-    , value : Int
-    }
-
-
-type alias User =
-    { name : String }
-
-
 emptyModel : Maybe String -> Model
 emptyModel roomId =
-    LoadingRoomState { inputUser = "", roomId = roomId, user = Nothing }
+    LoadingRoomState { inputUser = "", roomId = roomId, user = Nothing, userUuid = "" }
 
 
 type Msg
@@ -58,6 +50,7 @@ type Msg
     | JoinRoom
     | Reveal
     | Reset
+    | UuidGenerated UUID
 
 
 
@@ -72,11 +65,11 @@ port roomUpdate : (String -> msg) -> Sub msg
 
 init : Maybe String -> ( Model, Cmd Msg )
 init roomId =
-    ( emptyModel roomId, Cmd.none )
+    ( emptyModel roomId, generateUuid )
 
 
 initFullRoom room user =
-    LoadedRoom room (User user) [ 1, 2, 3, 5, 8, 13, 21 ]
+    LoadedRoom room user [ 1, 2, 3, 5, 8, 13, 21 ]
 
 
 subscriptions : Model -> Sub Msg
@@ -94,15 +87,23 @@ onUrlChange url =
     Request (Debug.toString url)
 
 
+generateUuid : Cmd Msg
+generateUuid =
+    Random.generate UuidGenerated UUID.generator
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case model of
         LoadingRoomState loadingRoom ->
             case msg of
+                UuidGenerated uuid ->
+                    ( LoadingRoomState { loadingRoom | userUuid = UUID.toString uuid }, Cmd.none )
+
                 CreateRoom ->
                     case loadingRoom.user of
                         Just user ->
-                            ( model, Room.create user.name GotRoom )
+                            ( model, Room.create user GotRoom )
 
                         Nothing ->
                             ( model, Cmd.none )
@@ -116,7 +117,7 @@ update msg model =
                             ( model, Cmd.none )
 
                 JoinRoom ->
-                    ( model, Room.join loadingRoom.roomId loadingRoom.inputUser GotRoom )
+                    ( model, Room.join loadingRoom.roomId (User loadingRoom.userUuid loadingRoom.inputUser) GotRoom )
 
                 InputUser user ->
                     ( LoadingRoomState { loadingRoom | inputUser = user }, Cmd.none )
@@ -127,13 +128,13 @@ update msg model =
         FullLoadedRoomState loadedRoom ->
             case msg of
                 CastVote vote ->
-                    ( model, Room.castVote loadedRoom.room.id loadedRoom.room.user vote GotRoom )
+                    ( model, Room.castVote loadedRoom.room vote GotRoom )
 
                 Reveal ->
-                    ( model, Room.reveal loadedRoom.room.id loadedRoom.room.user GotRoom )
+                    ( model, Room.reveal loadedRoom.room GotRoom )
 
                 Reset ->
-                    ( model, Room.reset loadedRoom.room.id loadedRoom.room.user GotRoom )
+                    ( model, Room.reset loadedRoom.room GotRoom )
 
                 GotRoom result ->
                     case result of
@@ -145,16 +146,6 @@ update msg model =
 
                 _ ->
                     ( model, Cmd.none )
-
-
-toMember : ( String, Int ) -> Member
-toMember ( name, vote ) =
-    Member (User name) vote
-
-
-castVote : Int -> Model -> Model
-castVote value model =
-    model
 
 
 view : Model -> Html Msg
@@ -190,17 +181,19 @@ viewRoom model =
         [ Html.p [] [ text ("hello, " ++ model.user.name) ]
         , Html.p [] [ text ("room id: " ++ model.room.id) ]
         , viewValueBar model.values
-        , viewMembers model.room
+        , viewUserVotes model.room
         , viewRevealButton model
         ]
 
 
-viewMembers room =
-    Html.ul [] (List.map (viewMember room.revealed) (room.members |> List.sortBy (\t -> t.username)))
+viewUserVotes : Room -> Html msg
+viewUserVotes room =
+    Html.ul [] (List.map (viewUserVote room.revealed) (room.members |> List.sortBy (\t -> t.user.name)))
 
 
-viewMember revealed member =
-    Html.li [] [ text (member.username ++ ": "), viewVote revealed member.vote ]
+viewUserVote : Bool -> UserVote -> Html msg
+viewUserVote revealed userVote =
+    Html.li [] [ text (userVote.user.name ++ ": "), viewVote revealed userVote.vote ]
 
 
 viewVote revealed vote =

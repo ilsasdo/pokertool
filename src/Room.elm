@@ -5,15 +5,27 @@ import Json.Decode as Decode exposing (Decoder, bool, field, int, string)
 
 
 type alias Room =
-    { user : String
+    { user : User
     , id : String
     , revealed : Bool
-    , members : List Member
+    , members : List UserVote
     }
 
 
-type alias Member =
-    { username : String
+type alias User =
+    { id : String
+    , name : String
+    }
+
+
+type alias UserVote =
+    { user : User
+    , vote : Int
+    }
+
+
+type alias VoteInfo =
+    { name : String
     , vote : Int
     }
 
@@ -22,15 +34,16 @@ urlAddress part =
     "/room" ++ part
 
 
+create : User -> (Result Error Room -> msg) -> Cmd msg
 create user event =
     Http.post
-        { url = urlAddress "?user=" ++ user
+        { url = urlAddress "?user=" ++ user.name ++ "&userId=" ++ user.id
         , body = Http.emptyBody
         , expect = Http.expectJson event (roomDecoder (Room user))
         }
 
 
-join : Maybe String -> String -> (Result Error Room -> m) -> Cmd m
+join : Maybe String -> User -> (Result Error Room -> m) -> Cmd m
 join roomId user event =
     case roomId of
         Nothing ->
@@ -38,33 +51,33 @@ join roomId user event =
 
         Just id ->
             Http.post
-                { url = urlAddress "/join?id=" ++ id ++ "&user=" ++ user
+                { url = urlAddress "/join?id=" ++ id ++ "&user=" ++ user.name ++ "&userId=" ++ user.id
                 , body = Http.emptyBody
                 , expect = Http.expectJson event (roomDecoder (Room user))
                 }
 
 
-castVote roomId user vote event =
+castVote room vote event =
     Http.post
-        { url = urlAddress "/vote?id=" ++ roomId ++ "&user=" ++ user ++ "&vote=" ++ String.fromInt vote
+        { url = urlAddress "/vote?id=" ++ room.id ++ "&userId=" ++ room.user.id ++ "&vote=" ++ String.fromInt vote
         , body = Http.emptyBody
-        , expect = Http.expectJson event (roomDecoder (Room user))
+        , expect = Http.expectJson event (roomDecoder (Room room.user))
         }
 
 
-reveal roomId user event =
+reveal room event =
     Http.post
-        { url = urlAddress "/reveal?id=" ++ roomId
+        { url = urlAddress "/reveal?id=" ++ room.id
         , body = Http.emptyBody
-        , expect = Http.expectJson event (roomDecoder (Room user))
+        , expect = Http.expectJson event (roomDecoder (Room room.user))
         }
 
 
-reset roomId user event =
+reset room event =
     Http.post
-        { url = urlAddress "/reset?id=" ++ roomId
+        { url = urlAddress "/reset?id=" ++ room.id
         , body = Http.emptyBody
-        , expect = Http.expectJson event (roomDecoder (Room user))
+        , expect = Http.expectJson event (roomDecoder (Room room.user))
         }
 
 
@@ -75,16 +88,23 @@ roomDecoder a =
         (field "Members" membersDecoder)
 
 
-membersDecoder : Decoder (List Member)
+membersDecoder : Decoder (List UserVote)
 membersDecoder =
-    Decode.keyValuePairs int |> Decode.map toMembers
+    Decode.keyValuePairs memberInfoDecoder |> Decode.map toMembers
 
 
-toMembers : List ( String, Int ) -> List Member
+memberInfoDecoder : Decoder VoteInfo
+memberInfoDecoder =
+    Decode.map2 VoteInfo
+        (field "Name" string)
+        (field "Vote" int)
+
+
+toMembers : List ( String, VoteInfo ) -> List UserVote
 toMembers =
     List.map toMember
 
 
-toMember : ( String, Int ) -> Member
+toMember : ( String, VoteInfo ) -> UserVote
 toMember m =
-    Member (Tuple.first m) (Tuple.second m)
+    UserVote (User (Tuple.first m) (Tuple.second m).name) (Tuple.second m).vote

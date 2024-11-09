@@ -4,7 +4,7 @@ use aws_sdk_dynamodb::types::{AttributeValue, ReturnValue};
 use lambda_http::{run, service_fn, tracing, Body, Error, Request, RequestExt, Response};
 use serde::{Deserialize, Serialize};
 use serde_dynamo::aws_sdk_dynamodb_1::from_item;
-use serde_dynamo::to_item;
+use serde_dynamo::{to_attribute_value, to_item};
 use std::collections::HashMap;
 use std::env;
 use std::fmt::format;
@@ -20,10 +20,18 @@ struct HandlerConfig {
 pub struct PokerRoom {
     id: String,
     revealed: bool,
-    members: HashMap<String, u16>,
+    members: HashMap<String, Member>,
 }
 
-async fn create_room(config: &HandlerConfig, user: Option<&str>) -> Result<Response<Body>, Error> {
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct Member {
+    id: String,
+    name: String,
+    vote: u16,
+}
+
+async fn create_room(config: &HandlerConfig, user: Option<&str>, user_id: Option<&str>) -> Result<Response<Body>, Error> {
     let uuid = Uuid::new_v4();
     let mut poker_room = PokerRoom {
         id: uuid.to_string(),
@@ -31,8 +39,13 @@ async fn create_room(config: &HandlerConfig, user: Option<&str>) -> Result<Respo
         members: HashMap::new(),
     };
 
-    if (user.is_some()) {
-        poker_room.members.insert(user.unwrap().into(), 0);
+    if user.is_some() && user_id.is_some() {
+        let user_vote = Member {
+            id: user_id.unwrap().to_string(),
+            name: user.unwrap().to_string(),
+            vote: 0,
+        };
+        poker_room.members.insert(user_vote.id.clone(), user_vote);
     }
 
     let item = to_item(&poker_room).unwrap();
@@ -48,15 +61,20 @@ async fn create_room(config: &HandlerConfig, user: Option<&str>) -> Result<Respo
     ok(poker_room)
 }
 
-async fn join_room(config: &HandlerConfig, room_uuid: &str, user: &str) -> Result<Response<Body>, Error> {
+async fn join_room(config: &HandlerConfig, room_uuid: &str, user: &str, user_id: &str) -> Result<Response<Body>, Error> {
+    let mut map = HashMap::<String, AttributeValue>::new();
+    map.insert("Id".to_string(), AttributeValue::S(user_id.to_string()));
+    map.insert("Name".to_string(), AttributeValue::S(user.to_string()));
+    map.insert("Vote".to_string(), AttributeValue::N("0".to_string()));
+
     let update_result = config
         .dynamodb_client
         .update_item()
         .table_name(config.table_name.as_str())
         .key("Id", AttributeValue::S(room_uuid.to_string()))
-        .update_expression("set Members.#Username = :value")
-        .expression_attribute_names("#Username", user.to_string())
-        .expression_attribute_values(":value", AttributeValue::N("0".to_string()))
+        .update_expression("set Members.#UserId = :value")
+        .expression_attribute_names("#UserId", user_id.to_string())
+        .expression_attribute_values(":value", AttributeValue::M(map))
         .return_values(ReturnValue::AllNew)
         .send()
         .await?;
@@ -66,14 +84,14 @@ async fn join_room(config: &HandlerConfig, room_uuid: &str, user: &str) -> Resul
     ok(response)
 }
 
-async fn exit_room(config: &HandlerConfig, room_uuid: &str, user: &str) -> Result<Response<Body>, Error> {
+async fn exit_room(config: &HandlerConfig, room_uuid: &str, user_id: &str) -> Result<Response<Body>, Error> {
     let update_result = config
         .dynamodb_client
         .update_item()
         .table_name(config.table_name.as_str())
         .key("Id", AttributeValue::S(room_uuid.to_string()))
-        .update_expression("remove Members.#Username")
-        .expression_attribute_names("#Username", user.to_string())
+        .update_expression("remove Members.#UserId")
+        .expression_attribute_names("#UserId", user_id.to_string())
         .return_values(ReturnValue::AllNew)
         .send()
         .await?;
@@ -83,14 +101,14 @@ async fn exit_room(config: &HandlerConfig, room_uuid: &str, user: &str) -> Resul
     ok(response)
 }
 
-async fn cast_vote(config: &HandlerConfig, room_uuid: &str, user: &str, vote: &str) -> Result<Response<Body>, Error> {
+async fn cast_vote(config: &HandlerConfig, room_uuid: &str, user_id: &str, vote: &str) -> Result<Response<Body>, Error> {
     let update_result = config
         .dynamodb_client
         .update_item()
         .table_name(config.table_name.as_str())
         .key("Id", AttributeValue::S(room_uuid.to_string()))
-        .update_expression("set Members.#Username = :value")
-        .expression_attribute_names("#Username", user.to_string())
+        .update_expression("set Members.#UserId.Vote = :value")
+        .expression_attribute_names("#UserId", user_id.to_string())
         .expression_attribute_values(":value", AttributeValue::N(vote.to_string()))
         .return_values(ReturnValue::AllNew)
         .send()
@@ -182,17 +200,20 @@ async fn function_handler(config: &HandlerConfig, request: Request) -> Result<Re
     let user = request
         .query_string_parameters_ref()
         .and_then(|params| params.first("user"));
+    let user_id = request
+        .query_string_parameters_ref()
+        .and_then(|params| params.first("userId"));
     let vote = request
         .query_string_parameters_ref()
         .and_then(|params| params.first("vote"));
 
     match (method, uri) {
-        ("POST", "/room") => create_room(config, user).await,
-        ("POST", "/room/join") => join_room(config, room_id.unwrap(), user.unwrap()).await,
-        ("POST", "/room/vote") => cast_vote(config, room_id.unwrap(), user.unwrap(), vote.unwrap()).await,
+        ("POST", "/room") => create_room(config, user, user_id).await,
+        ("POST", "/room/join") => join_room(config, room_id.unwrap(), user.unwrap(), user_id.unwrap()).await,
+        ("POST", "/room/vote") => cast_vote(config, room_id.unwrap(), user_id.unwrap(), vote.unwrap()).await,
         ("POST", "/room/reveal") => reveal(config, room_id.unwrap()).await,
         ("POST", "/room/reset") => reset(config, room_id.unwrap()).await,
-        ("POST", "/room/leave") => exit_room(config, room_id.unwrap(), user.unwrap()).await,
+        ("POST", "/room/leave") => exit_room(config, room_id.unwrap(), user_id.unwrap()).await,
         ("GET", "/room") => get_room(config, room_id.unwrap()).await,
         _ => not_found(uri)
     }
