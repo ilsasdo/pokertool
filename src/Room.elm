@@ -25,7 +25,8 @@ type alias UserVote =
 
 
 type alias VoteInfo =
-    { name : String
+    { id : String
+    , name : String
     , vote : Int
     }
 
@@ -95,7 +96,8 @@ membersDecoder =
 
 memberInfoDecoder : Decoder VoteInfo
 memberInfoDecoder =
-    Decode.map2 VoteInfo
+    Decode.map3 VoteInfo
+        (field "Id" string)
         (field "Name" string)
         (field "Vote" int)
 
