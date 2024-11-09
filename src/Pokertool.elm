@@ -2,11 +2,11 @@ port module Pokertool exposing (..)
 
 import Browser exposing (UrlRequest)
 import Html exposing (Html, text)
-import Html.Events exposing (onClick)
+import Html.Attributes exposing (type_, value)
+import Html.Events exposing (onClick, onInput)
 import Http
 import Room exposing (Room)
 import Url exposing (Url)
-import User exposing (User)
 import ValueBar
 
 
@@ -19,23 +19,35 @@ main =
         }
 
 
-type alias Model =
-    { roomId : Maybe String
-    , currentUser : User
-    , values : ValueBar.Model
-    , votes : List Vote
+type alias LoadingRoom =
+    { inputUser : String, roomId : Maybe String, user : Maybe User }
+
+
+type alias LoadedRoom =
+    { room : Room
+    , user : User
+    , values : List Int
     }
 
 
-type alias Vote =
+type Model
+    = LoadingRoomState LoadingRoom
+    | FullLoadedRoomState LoadedRoom
+
+
+type alias Member =
     { user : User
     , value : Int
     }
 
 
+type alias User =
+    { name : String }
+
+
 emptyModel : Maybe String -> Model
 emptyModel roomId =
-    Model roomId (User "enrico") ValueBar.init []
+    LoadingRoomState { inputUser = "", roomId = roomId, user = Nothing }
 
 
 type Msg
@@ -43,6 +55,8 @@ type Msg
     | Request String
     | CreateRoom
     | GotRoom (Result Http.Error Room)
+    | InputUser String
+    | JoinRoom
 
 
 
@@ -58,6 +72,10 @@ port roomUpdate : (String -> msg) -> Sub msg
 init : Maybe String -> ( Model, Cmd Msg )
 init roomId =
     ( emptyModel roomId, Cmd.none )
+
+
+initFullRoom room user =
+    LoadedRoom room (User user) [ 1, 2, 3, 5, 8, 13, 21 ]
 
 
 subscriptions : Model -> Sub Msg
@@ -77,30 +95,48 @@ onUrlChange url =
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    case msg of
-        CreateRoom ->
-            ( model, createRoom )
+    case model of
+        LoadingRoomState loadingRoom ->
+            case msg of
+                CreateRoom ->
+                    case loadingRoom.user of
+                        Just user ->
+                            ( model, Room.create user.name GotRoom )
 
-        CastVote value ->
-            case value of
-                ValueBar.ClickValue vote ->
-                    ( castVote vote model, Cmd.none )
+                        Nothing ->
+                            ( model, Cmd.none )
 
-        GotRoom result ->
-            case result of
-                Ok room ->
-                    ( { model | roomId = Just room.id }, Cmd.none )
+                GotRoom result ->
+                    case result of
+                        Ok room ->
+                            ( FullLoadedRoomState (initFullRoom room room.user), Cmd.none )
 
-                Err _ ->
+                        Err _ ->
+                            ( model, Cmd.none )
+
+                JoinRoom ->
+                    ( model, Room.join loadingRoom.roomId loadingRoom.inputUser GotRoom )
+
+                InputUser user ->
+                    ( LoadingRoomState { loadingRoom | inputUser = user }, Cmd.none )
+
+                _ ->
                     ( model, Cmd.none )
 
-        Request string ->
-            ( model, Cmd.none )
+        FullLoadedRoomState loadedRoom ->
+            case msg of
+                CastVote value ->
+                    case value of
+                        ValueBar.ClickValue vote ->
+                            ( model, Room.castVote loadedRoom.room.id loadedRoom.room.user vote GotRoom )
+
+                _ ->
+                    ( model, Cmd.none )
 
 
-createRoom : Cmd Msg
-createRoom =
-    Room.create GotRoom
+toMember : ( String, Int ) -> Member
+toMember ( name, vote ) =
+    Member (User name) vote
 
 
 castVote : Int -> Model -> Model
@@ -110,15 +146,34 @@ castVote value model =
 
 view : Model -> Html Msg
 view model =
-    case model.roomId of
-        Just id ->
-            Html.div []
-                [ text ("hello, " ++ model.currentUser.name ++ id)
-                , ValueBar.view model.values |> Html.map CastVote
-                ]
+    case model of
+        LoadingRoomState loadingRoom ->
+            askUser loadingRoom
 
+        FullLoadedRoomState loadedRoom ->
+            viewRoom loadedRoom
+
+
+askUser : LoadingRoom -> Html Msg
+askUser model =
+    case model.user of
         Nothing ->
             Html.div []
-                [ text ("hello, " ++ model.currentUser.name ++ ", Create a new room: ")
+                [ text "Please insert your name: "
+                , Html.input [ type_ "text", onInput InputUser, value model.inputUser ] []
+                , Html.button [ type_ "button", onClick JoinRoom ] [ text "Join" ]
+                ]
+
+        Just user ->
+            Html.div []
+                [ text ("hello, " ++ user.name ++ ", Create a new room: ")
                 , Html.button [ onClick CreateRoom ] [ text "Create" ]
                 ]
+
+
+viewRoom : LoadedRoom -> Html Msg
+viewRoom model =
+    Html.div []
+        [ text ("hello, " ++ model.user.name ++ model.room.id)
+        , ValueBar.view model.values |> Html.map CastVote
+        ]

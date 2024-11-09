@@ -23,13 +23,17 @@ pub struct PokerRoom {
     members: HashMap<String, u16>,
 }
 
-async fn create_room(config: &HandlerConfig) -> Result<Response<Body>, Error> {
+async fn create_room(config: &HandlerConfig, user: Option<&str>) -> Result<Response<Body>, Error> {
     let uuid = Uuid::new_v4();
-    let poker_room = PokerRoom {
+    let mut poker_room = PokerRoom {
         id: uuid.to_string(),
         revealed: false,
         members: HashMap::new(),
     };
+
+    if (user.is_some()) {
+        poker_room.members.insert(user.unwrap().into(), 0);
+    }
 
     let item = to_item(&poker_room).unwrap();
 
@@ -183,7 +187,7 @@ async fn function_handler(config: &HandlerConfig, request: Request) -> Result<Re
         .and_then(|params| params.first("vote"));
 
     match (method, uri) {
-        ("POST", "/room") => create_room(config).await,
+        ("POST", "/room") => create_room(config, user).await,
         ("POST", "/room/join") => join_room(config, room_id.unwrap(), user.unwrap()).await,
         ("POST", "/room/vote") => cast_vote(config, room_id.unwrap(), user.unwrap(), vote.unwrap()).await,
         ("POST", "/room/reveal") => reveal(config, room_id.unwrap()).await,

@@ -3,26 +3,19 @@ module ValueBar exposing (..)
 import Html exposing (Html, text)
 import Html.Attributes
 import Html.Events
-
-
-type alias Model =
-    { values : List Int
-    }
+import String exposing (toInt)
 
 
 type Msg
     = ClickValue Int
 
 
-init =
-    Model [ 1, 2, 3, 5, 8, 13, 21 ]
-
-
-view model =
+view : List Int -> Html Msg
+view values =
     Html.div []
         (List.map
             valueButton
-            model.values
+            values
         )
 
 
