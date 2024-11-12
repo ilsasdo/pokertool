@@ -5,6 +5,8 @@ import Html exposing (Html, text)
 import Html.Attributes exposing (type_, value)
 import Html.Events exposing (onClick, onInput)
 import Http
+import Json.Decode exposing (Decoder, field, string)
+import Json.Encode
 import Random
 import Room exposing (Room, User, UserVote)
 import UUID exposing (UUID)
@@ -51,16 +53,17 @@ type Msg
     | Reveal
     | Reset
     | UuidGenerated UUID
+    | LoggedInUser (Maybe User)
 
 
 
 -- PORTS
 
 
-port openWebsocket : String -> Cmd msg
+port storeUser : User -> Cmd msg
 
 
-port roomUpdate : (String -> msg) -> Sub msg
+port loadUser : (String -> msg) -> Sub msg
 
 
 init : Maybe String -> ( Model, Cmd Msg )
@@ -73,8 +76,25 @@ initFullRoom room user =
 
 
 subscriptions : Model -> Sub Msg
-subscriptions model =
-    Sub.none
+subscriptions _ =
+    loadUser userDecoder
+
+
+userDecoder : String -> Msg
+userDecoder value =
+    case
+        Json.Decode.decodeString
+            (Json.Decode.map2 User
+                (field "id" string)
+                (field "name" string)
+            )
+            (Debug.log "userDecode" value)
+    of
+        Ok user ->
+            LoggedInUser (Just user)
+
+        Err _ ->
+            LoggedInUser Nothing
 
 
 onUrlRequest : UrlRequest -> Msg
@@ -97,6 +117,14 @@ update msg model =
     case model of
         LoadingRoomState loadingRoom ->
             case msg of
+                LoggedInUser user ->
+                    case Debug.log "LoggedIn" user of
+                        Just u ->
+                            ( LoadingRoomState { loadingRoom | userUuid = u.id, user = user }, Cmd.none )
+
+                        Nothing ->
+                            ( model, generateUuid )
+
                 UuidGenerated uuid ->
                     ( LoadingRoomState { loadingRoom | userUuid = UUID.toString uuid }, Cmd.none )
 
@@ -111,7 +139,7 @@ update msg model =
                 GotRoom result ->
                     case result of
                         Ok room ->
-                            ( FullLoadedRoomState (initFullRoom room room.user), Cmd.none )
+                            ( FullLoadedRoomState (initFullRoom room room.user), storeUser room.user )
 
                         Err _ ->
                             ( model, Cmd.none )

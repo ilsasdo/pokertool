@@ -14,33 +14,26 @@
         node: document.getElementById('app')
     });
 
-    // Inform app of browser navigation (the BACK and FORWARD buttons)
-    // window.addEventListener('popstate', function () {
-    //     app.ports.onUrlChange.send(location.href);
-    // });
+    app.ports.storeUser.subscribe(function (user) {
+        storeUser(JSON.stringify(user))
+    })
 
-    // Change the URL upon request, inform app of the change.
-    // app.ports.pushUrl.subscribe(function(url) {
-    //     history.pushState({}, '', url);
-    //     app.ports.onUrlChange.send(location.href);
-    // });
+    let user = getUser();
+    if (user) {
+        app.ports.loadUser.send(user);
+    }
 
-    // When a command goes to the `sendMessage` port, we pass the message
-    // along to the WebSocket.
-    app.ports.openWebsocket.subscribe(function (roomId) {
-        let socket = new WebSocket("wss://w78h9mubp4.execute-api.eu-west-1.amazonaws.com/Prod")
-        socket.addEventListener("open", function (event) {
-            console.log("OPEN!!")
-            socket.send(JSON.stringify({action: "sendmessage", payload: {type: "join", roomId: roomId}}))
-            console.log("Message sent!")
-        })
+    function storeUser(user) {
+        localStorage.setItem("user", user);
+    }
 
-        socket.addEventListener("message", function (event) {
-            console.log("Message received: ")
-            console.log(event)
-            //app.ports.roomUpdate.send("message received!")
-        })
-    });
+    function getUser() {
+        return localStorage.getItem("user");
+    }
+
+    function logout() {
+        localStorage.removeItem("user");
+    }
 </script>
 </body>
 </html>
