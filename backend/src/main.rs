@@ -72,7 +72,7 @@ async fn join_room(config: &HandlerConfig, room_uuid: &str, user: &str, user_id:
         .update_item()
         .table_name(config.table_name.as_str())
         .key("Id", AttributeValue::S(room_uuid.to_string()))
-        .update_expression("set Members.#UserId = :value")
+        .update_expression("set Members.#UserId = if_not_exists(Members.#UserId, :value)")
         .expression_attribute_names("#UserId", user_id.to_string())
         .expression_attribute_values(":value", AttributeValue::M(map))
         .return_values(ReturnValue::AllNew)

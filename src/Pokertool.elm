@@ -60,6 +60,7 @@ type Msg
     | LoggedInUser (Maybe User)
     | Logout
     | LoadRoom Posix
+    | LoggedOut (Result Http.Error Room)
 
 
 
@@ -164,6 +165,9 @@ update msg model =
                 InputUser user ->
                     ( LoadingRoomState { loadingRoom | inputUser = user }, Cmd.none )
 
+                LoggedOut _ ->
+                    ( emptyModel Nothing, logout () )
+
                 _ ->
                     ( model, Cmd.none )
 
@@ -186,8 +190,11 @@ update msg model =
                         Err _ ->
                             ( model, Cmd.none )
 
-                Logout ->
+                LoggedOut _ ->
                     ( emptyModel Nothing, logout () )
+
+                Logout ->
+                    ( emptyModel Nothing, Room.leave loadedRoom.room LoggedOut )
 
                 LoadRoom _ ->
                     ( model, Room.load loadedRoom.room.id loadedRoom.user GotRoom )
@@ -237,7 +244,7 @@ viewRoom model =
 
 viewUserVotes : Room -> Html msg
 viewUserVotes room =
-    Html.ul [] (List.map (viewUserVote room.revealed) (room.members |> List.sortBy (\t -> t.user.name)))
+    Html.ul [] (List.map (viewUserVote room.revealed) (room.members |> List.sortBy (\t -> t.user.id) |> List.sortBy (\t -> t.user.name)))
 
 
 viewUserVote : Bool -> UserVote -> Html msg

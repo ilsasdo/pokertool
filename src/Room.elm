@@ -82,6 +82,14 @@ reveal room event =
         }
 
 
+leave room event =
+    Http.post
+        { url = urlAddress "/leave?id=" ++ room.id ++ "&userId=" ++ room.user.id
+        , body = Http.emptyBody
+        , expect = Http.expectJson event (roomDecoder (Room room.user))
+        }
+
+
 reset room event =
     Http.post
         { url = urlAddress "/reset?id=" ++ room.id
