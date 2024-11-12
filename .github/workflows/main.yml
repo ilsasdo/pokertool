@@ -1,0 +1,26 @@
+name: build
+run-name: deploy-to-website
+on: [push]
+jobs:
+  build-project:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '14'
+      - run: npm install -g elm
+      - run: elm make src/pokertool.elm --output dist/app.js
+      - name: Pushes to public repository
+        id: push_directory
+        uses: cpina/github-action-push-to-another-repository@ssh-deploy-key
+        env:
+          SSH_DEPLOY_KEY: ${{ secrets.WORKFLOW_DEPLOY_KEY }}
+        with:
+          source-directory: dist/
+          destination-github-username: 'ilsasdo'
+          destination-repository-name: 'ilsasdo.github.io'
+          user-email: ilsasdo@gmail.com
+          commit-message: pushed from $GITHUB_REF
+          target-branch: main
+          target-directory: projects/pokertool
