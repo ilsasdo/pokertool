@@ -10,7 +10,7 @@ jobs:
         with:
           node-version: '20'
       - run: npm install -g elm
-      - run: elm make src/pokertool.elm --output dist/app.js
+      - run: elm make src/Pokertool.elm --output dist/app.js
       - name: Pushes to public repository
         id: push_directory
         uses: cpina/github-action-push-to-another-repository@ssh-deploy-key
