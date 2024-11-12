@@ -18,6 +18,10 @@
         storeUser(JSON.stringify(user))
     })
 
+    app.ports.logout.subscribe(function (user) {
+        logout()
+    })
+
     let user = getUser();
     if (user) {
         app.ports.loadUser.send(user);
@@ -32,6 +36,7 @@
     }
 
     function logout() {
+        console.log("Logout")
         localStorage.removeItem("user");
     }
 </script>

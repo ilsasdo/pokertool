@@ -6,9 +6,9 @@ import Html.Attributes exposing (type_, value)
 import Html.Events exposing (onClick, onInput)
 import Http
 import Json.Decode exposing (Decoder, field, string)
-import Json.Encode
 import Random
 import Room exposing (Room, User, UserVote)
+import Time exposing (Posix)
 import UUID exposing (UUID)
 import Url exposing (Url)
 
@@ -23,7 +23,11 @@ main =
 
 
 type alias LoadingRoom =
-    { inputUser : String, roomId : Maybe String, user : Maybe User, userUuid : String }
+    { inputUser : String
+    , roomId : Maybe String
+    , user : Maybe User
+    , userUuid : String
+    }
 
 
 type alias LoadedRoom =
@@ -54,6 +58,8 @@ type Msg
     | Reset
     | UuidGenerated UUID
     | LoggedInUser (Maybe User)
+    | Logout
+    | LoadRoom Posix
 
 
 
@@ -66,9 +72,12 @@ port storeUser : User -> Cmd msg
 port loadUser : (String -> msg) -> Sub msg
 
 
+port logout : () -> Cmd msg
+
+
 init : Maybe String -> ( Model, Cmd Msg )
 init roomId =
-    ( emptyModel roomId, generateUuid )
+    ( emptyModel (Debug.log "init" roomId), generateUserUUID )
 
 
 initFullRoom room user =
@@ -77,7 +86,7 @@ initFullRoom room user =
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
-    loadUser userDecoder
+    Sub.batch [ loadUser userDecoder, Time.every 5000 LoadRoom ]
 
 
 userDecoder : String -> Msg
@@ -107,8 +116,8 @@ onUrlChange url =
     Request (Debug.toString url)
 
 
-generateUuid : Cmd Msg
-generateUuid =
+generateUserUUID : Cmd Msg
+generateUserUUID =
     Random.generate UuidGenerated UUID.generator
 
 
@@ -118,12 +127,17 @@ update msg model =
         LoadingRoomState loadingRoom ->
             case msg of
                 LoggedInUser user ->
-                    case Debug.log "LoggedIn" user of
+                    case user of
                         Just u ->
-                            ( LoadingRoomState { loadingRoom | userUuid = u.id, user = user }, Cmd.none )
+                            case loadingRoom.roomId of
+                                Just roomId ->
+                                    ( model, Room.join (Just roomId) u GotRoom )
+
+                                Nothing ->
+                                    ( LoadingRoomState { loadingRoom | userUuid = u.id, user = user }, Cmd.none )
 
                         Nothing ->
-                            ( model, generateUuid )
+                            ( model, generateUserUUID )
 
                 UuidGenerated uuid ->
                     ( LoadingRoomState { loadingRoom | userUuid = UUID.toString uuid }, Cmd.none )
@@ -172,6 +186,12 @@ update msg model =
                         Err _ ->
                             ( model, Cmd.none )
 
+                Logout ->
+                    ( emptyModel Nothing, logout () )
+
+                LoadRoom _ ->
+                    ( model, Room.load loadedRoom.room.id loadedRoom.user GotRoom )
+
                 _ ->
                     ( model, Cmd.none )
 
@@ -211,6 +231,7 @@ viewRoom model =
         , viewValueBar model.values
         , viewUserVotes model.room
         , viewRevealButton model
+        , viewLogoutButton model
         ]
 
 
@@ -239,6 +260,11 @@ viewRevealButton model =
 
     else
         Html.p [] [ Html.button [ onClick Reveal ] [ text "Reveal" ] ]
+
+
+viewLogoutButton : LoadedRoom -> Html Msg
+viewLogoutButton model =
+    Html.p [] [ Html.button [ onClick Logout ] [ text "Logout" ] ]
 
 
 viewValueBar : List Int -> Html Msg

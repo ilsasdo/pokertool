@@ -44,6 +44,14 @@ create user event =
         }
 
 
+load : String -> User -> (Result Error Room -> msg) -> Cmd msg
+load roomId user event =
+    Http.get
+        { url = urlAddress "?id=" ++ roomId
+        , expect = Http.expectJson event (roomDecoder (Room user))
+        }
+
+
 join : Maybe String -> User -> (Result Error Room -> m) -> Cmd m
 join roomId user event =
     case roomId of
