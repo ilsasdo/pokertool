@@ -8,7 +8,7 @@ import Http
 import Json.Decode exposing (Decoder, field, string)
 import Random
 import Room exposing (Room, User, UserVote)
-import Time exposing (Posix)
+import Time exposing (Posix, posixToMillis)
 import UUID exposing (UUID)
 import Url exposing (Url)
 
@@ -34,6 +34,7 @@ type alias LoadedRoom =
     { room : Room
     , user : User
     , values : List Int
+    , lastPing : Int
     }
 
 
@@ -52,14 +53,16 @@ type Msg
     | Request String
     | CreateRoom
     | GotRoom (Result Http.Error Room)
+    | GotPing Posix (Result Http.Error Room)
     | InputUser String
+    | Login
     | JoinRoom
     | Reveal
     | Reset
     | UuidGenerated UUID
     | LoggedInUser (Maybe User)
     | Logout
-    | LoadRoom Posix
+    | Ping Posix
     | LoggedOut (Result Http.Error Room)
 
 
@@ -76,18 +79,22 @@ port loadUser : (String -> msg) -> Sub msg
 port logout : () -> Cmd msg
 
 
+pingTimeSeconds =
+    5
+
+
 init : Maybe String -> ( Model, Cmd Msg )
 init roomId =
     ( emptyModel (Debug.log "init" roomId), generateUserUUID )
 
 
 initFullRoom room user =
-    LoadedRoom room user [ 1, 2, 3, 5, 8, 13, 21 ]
+    LoadedRoom room user [ 1, 2, 3, 5, 8, 13, 21 ] 0
 
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
-    Sub.batch [ loadUser userDecoder, Time.every 5000 LoadRoom ]
+    Sub.batch [ loadUser userDecoder, Time.every (pingTimeSeconds * 1000) Ping ]
 
 
 userDecoder : String -> Msg
@@ -98,7 +105,7 @@ userDecoder value =
                 (field "id" string)
                 (field "name" string)
             )
-            (Debug.log "userDecode" value)
+            value
     of
         Ok user ->
             LoggedInUser (Just user)
@@ -165,6 +172,13 @@ update msg model =
                 InputUser user ->
                     ( LoadingRoomState { loadingRoom | inputUser = user }, Cmd.none )
 
+                Login ->
+                    let
+                        user =
+                            User loadingRoom.userUuid loadingRoom.inputUser
+                    in
+                    ( LoadingRoomState { loadingRoom | user = Just user }, storeUser user )
+
                 LoggedOut _ ->
                     ( emptyModel Nothing, logout () )
 
@@ -182,10 +196,18 @@ update msg model =
                 Reset ->
                     ( model, Room.reset loadedRoom.room GotRoom )
 
+                GotPing posix result ->
+                    case result of
+                        Ok room ->
+                            ( FullLoadedRoomState { loadedRoom | room = room, user = room.user, lastPing = posixToMillis posix // 1000 }, Cmd.none )
+
+                        Err _ ->
+                            ( model, Cmd.none )
+
                 GotRoom result ->
                     case result of
                         Ok room ->
-                            ( FullLoadedRoomState (initFullRoom room room.user), Cmd.none )
+                            ( FullLoadedRoomState { loadedRoom | room = room, user = room.user }, Cmd.none )
 
                         Err _ ->
                             ( model, Cmd.none )
@@ -196,8 +218,8 @@ update msg model =
                 Logout ->
                     ( emptyModel Nothing, Room.leave loadedRoom.room LoggedOut )
 
-                LoadRoom _ ->
-                    ( model, Room.load loadedRoom.room.id loadedRoom.user GotRoom )
+                Ping posix ->
+                    ( FullLoadedRoomState { loadedRoom | lastPing = posixToMillis posix // 1000 }, Room.ping loadedRoom.room.id loadedRoom.user GotRoom )
 
                 _ ->
                     ( model, Cmd.none )
@@ -217,11 +239,20 @@ askUser : LoadingRoom -> Html Msg
 askUser model =
     case model.user of
         Nothing ->
-            Html.div []
-                [ text "Please insert your name: "
-                , Html.input [ type_ "text", onInput InputUser, value model.inputUser ] []
-                , Html.button [ type_ "button", onClick JoinRoom ] [ text "Join" ]
-                ]
+            case model.roomId of
+                Just roomId ->
+                    Html.div []
+                        [ text "Please insert your name: "
+                        , Html.input [ type_ "text", onInput InputUser, value model.inputUser ] []
+                        , Html.button [ type_ "button", onClick JoinRoom ] [ text "Join" ]
+                        ]
+
+                Nothing ->
+                    Html.div []
+                        [ text "Please insert your name: "
+                        , Html.input [ type_ "text", onInput InputUser, value model.inputUser ] []
+                        , Html.button [ type_ "button", onClick Login ] [ text "Login" ]
+                        ]
 
         Just user ->
             Html.div []
@@ -235,29 +266,37 @@ viewRoom model =
     Html.div []
         [ Html.p [] [ text ("hello, " ++ model.user.name) ]
         , Html.p [] [ text ("room id: " ++ model.room.id) ]
+        , Html.p [] [ text ("last ping: " ++ String.fromInt model.lastPing) ]
         , viewValueBar model.values
-        , viewUserVotes model.room
+        , viewUserVotes model
         , viewRevealButton model
         , viewLogoutButton model
         ]
 
 
-viewUserVotes : Room -> Html msg
-viewUserVotes room =
-    Html.ul [] (List.map (viewUserVote room.revealed) (room.members |> List.sortBy (\t -> t.user.id) |> List.sortBy (\t -> t.user.name)))
+viewUserVotes : LoadedRoom -> Html msg
+viewUserVotes model =
+    Html.ul [] (List.map (viewUserVote model) (model.room.members |> List.sortBy (\t -> t.user.id) |> List.sortBy (\t -> t.user.name)))
 
 
-viewUserVote : Bool -> UserVote -> Html msg
-viewUserVote revealed userVote =
-    Html.li [] [ text (userVote.user.name ++ ": "), viewVote revealed userVote.vote ]
+viewUserVote : LoadedRoom -> UserVote -> Html msg
+viewUserVote model userVote =
+    Html.li []
+        [ text (userVote.user.name ++ ": ")
+        , viewVote model.room.revealed userVote.vote
+        , viewUserStatus model.lastPing userVote
+        ]
 
 
 viewVote revealed vote =
     if revealed then
         text (String.fromInt vote)
 
-    else
+    else if vote > 0 then
         text "hidden"
+
+    else
+        text "not voted"
 
 
 viewRevealButton : LoadedRoom -> Html Msg
@@ -281,6 +320,19 @@ viewValueBar values =
             valueButton
             values
         )
+
+
+viewUserStatus : Int -> UserVote -> Html msg
+viewUserStatus lastPing user =
+    let
+        diff =
+            lastPing - user.ping
+    in
+    if diff > pingTimeSeconds * 2 then
+        text (", disconnected: " ++ String.fromInt diff)
+
+    else
+        text (", connected: " ++ String.fromInt diff)
 
 
 valueButton : Int -> Html Msg

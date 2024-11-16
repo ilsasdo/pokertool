@@ -10,6 +10,7 @@ Resources:
       CodeUri: .
       Handler: bootstrap
       Runtime: provided.al2023
+      MemorySize: 128
       Architectures:
         - arm64
       Events:

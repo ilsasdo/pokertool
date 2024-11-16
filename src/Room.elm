@@ -21,6 +21,7 @@ type alias User =
 type alias UserVote =
     { user : User
     , vote : Int
+    , ping : Int
     }
 
 
@@ -28,6 +29,7 @@ type alias VoteInfo =
     { id : String
     , name : String
     , vote : Int
+    , ping : Int
     }
 
 
@@ -48,6 +50,15 @@ load : String -> User -> (Result Error Room -> msg) -> Cmd msg
 load roomId user event =
     Http.get
         { url = urlAddress "?id=" ++ roomId
+        , expect = Http.expectJson event (roomDecoder (Room user))
+        }
+
+
+ping : String -> User -> (Result Error Room -> msg) -> Cmd msg
+ping roomId user event =
+    Http.post
+        { url = urlAddress "/ping?id=" ++ roomId ++ "&userId=" ++ user.id
+        , body = Http.emptyBody
         , expect = Http.expectJson event (roomDecoder (Room user))
         }
 
@@ -112,10 +123,11 @@ membersDecoder =
 
 memberInfoDecoder : Decoder VoteInfo
 memberInfoDecoder =
-    Decode.map3 VoteInfo
+    Decode.map4 VoteInfo
         (field "Id" string)
         (field "Name" string)
         (field "Vote" int)
+        (field "Ping" int)
 
 
 toMembers : List ( String, VoteInfo ) -> List UserVote
@@ -125,4 +137,4 @@ toMembers =
 
 toMember : ( String, VoteInfo ) -> UserVote
 toMember m =
-    UserVote (User (Tuple.first m) (Tuple.second m).name) (Tuple.second m).vote
+    UserVote (User (Tuple.first m) (Tuple.second m).name) (Tuple.second m).vote (Tuple.second m).ping
