@@ -2,8 +2,8 @@ port module Pokertool exposing (..)
 
 import Browser exposing (UrlRequest)
 import Html exposing (Html, text)
-import Html.Attributes exposing (type_, value)
-import Html.Events exposing (onClick, onInput)
+import Html.Attributes exposing (class, value)
+import Html.Events exposing (onClick)
 import Http
 import Json.Decode exposing (Decoder, field, string)
 import Random
@@ -11,6 +11,7 @@ import Room exposing (Room, User, UserVote)
 import Time exposing (Posix, posixToMillis)
 import UUID exposing (UUID)
 import Url exposing (Url)
+import Views
 
 
 main =
@@ -27,6 +28,7 @@ type alias LoadingRoom =
     , roomId : Maybe String
     , user : Maybe User
     , userUuid : String
+    , inputRoomId : String
     }
 
 
@@ -45,7 +47,7 @@ type Model
 
 emptyModel : Maybe String -> Model
 emptyModel roomId =
-    LoadingRoomState { inputUser = "", roomId = roomId, user = Nothing, userUuid = "" }
+    LoadingRoomState { inputUser = "", roomId = roomId, user = Nothing, userUuid = "", inputRoomId = "" }
 
 
 type Msg
@@ -55,6 +57,7 @@ type Msg
     | GotRoom (Result Http.Error Room)
     | GotPing Posix (Result Http.Error Room)
     | InputUser String
+    | InputRoomId String
     | Login
     | JoinRoom
     | Reveal
@@ -172,6 +175,9 @@ update msg model =
                 InputUser user ->
                     ( LoadingRoomState { loadingRoom | inputUser = user }, Cmd.none )
 
+                InputRoomId roomId ->
+                    ( LoadingRoomState { loadingRoom | inputRoomId = roomId }, Cmd.none )
+
                 Login ->
                     let
                         user =
@@ -229,10 +235,10 @@ view : Model -> Html Msg
 view model =
     case model of
         LoadingRoomState loadingRoom ->
-            askUser loadingRoom
+            Views.page <| askUser loadingRoom
 
         FullLoadedRoomState loadedRoom ->
-            viewRoom loadedRoom
+            Views.page <| viewRoom loadedRoom
 
 
 askUser : LoadingRoom -> Html Msg
@@ -241,24 +247,41 @@ askUser model =
         Nothing ->
             case model.roomId of
                 Just roomId ->
-                    Html.div []
-                        [ text "Please insert your name: "
-                        , Html.input [ type_ "text", onInput InputUser, value model.inputUser ] []
-                        , Html.button [ type_ "button", onClick JoinRoom ] [ text "Join" ]
+                    Html.div [ class "col" ]
+                        [ Views.insertUserName InputUser model.inputUser
+                        , Views.button JoinRoom "Join" True
                         ]
 
                 Nothing ->
-                    Html.div []
-                        [ text "Please insert your name: "
-                        , Html.input [ type_ "text", onInput InputUser, value model.inputUser ] []
-                        , Html.button [ type_ "button", onClick Login ] [ text "Login" ]
+                    Html.div [ class "col-md-6" ]
+                        [ Views.insertUserName InputUser model.inputUser
+                        , Views.hint "A valid user name must be at least 3 character long"
+                        , Views.button Login "Login" (isValidUser model.inputUser)
                         ]
 
         Just user ->
-            Html.div []
-                [ text ("hello, " ++ user.name ++ ", Create a new room: ")
-                , Html.button [ onClick CreateRoom ] [ text "Create" ]
+            Html.div [ class "col-md-6 text-center" ]
+                [ Html.p [] [ text ("Hello " ++ user.name ++ ",") ]
+                , Html.p [] [ Views.button CreateRoom "Create a New room" True ]
+                , Html.p [] [ text "or" ]
+                , Views.textInput InputRoomId model.inputRoomId
+                , Views.hint "Paste a valid Room Id"
+                , Html.p [] [ Views.button CreateRoom "Join an Existing One" (isValidRoomId model.inputRoomId) ]
                 ]
+
+
+isValidUser name =
+    name
+        |> String.trim
+        |> String.length
+        |> (<=) 3
+
+
+isValidRoomId name =
+    name
+        |> String.trim
+        |> String.length
+        |> (<=) 36
 
 
 viewRoom : LoadedRoom -> Html Msg
