@@ -93,11 +93,12 @@ reveal room event =
         }
 
 
-leave room event =
+leave : String -> User -> (Result Error Room -> msg) -> Cmd msg
+leave roomId user event =
     Http.post
-        { url = urlAddress "/leave?id=" ++ room.id ++ "&userId=" ++ room.user.id
+        { url = urlAddress "/leave?id=" ++ roomId ++ "&userId=" ++ user.id
         , body = Http.emptyBody
-        , expect = Http.expectJson event (roomDecoder (Room room.user))
+        , expect = Http.expectJson event (roomDecoder (Room user))
         }
 
 
