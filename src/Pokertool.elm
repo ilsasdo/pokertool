@@ -319,16 +319,25 @@ viewRoom : LoadedRoom -> Html Msg
 viewRoom model =
     Views.centeredLarge
         [ viewRoomLink model.room
-        , viewValueBar model.values
+        , viewValueBar model.values (currentUserVote model)
         , viewUserVotes model
         , viewRevealButton model
         ]
 
 
+currentUserVote : LoadedRoom -> Int
+currentUserVote model =
+    model.room.members
+        |> List.filter (\u -> u.user.id == model.user.id)
+        |> List.head
+        |> Maybe.withDefault (UserVote (User "" "") 0 0)
+        |> .vote
+
+
 viewRoomLink room =
     Html.p []
         [ text "Share Room Link: "
-        , Html.a [ href ("?id=" ++ room.id) ] [ text room.id ]
+        , Html.a [ class "font-monospace", href ("?id=" ++ room.id) ] [ text room.id ]
         ]
 
 
@@ -339,7 +348,7 @@ viewUserVotes model =
 
 viewUserVote : LoadedRoom -> UserVote -> Html msg
 viewUserVote model userVote =
-    Html.li [ class "list-group-item d-flex justify-content-between align-items-start" ]
+    Html.li [ class "list-group-item d-flex justify-content-between align-items-start fs-5" ]
         [ Html.div [ class "ms-2 me-auto" ] [ Html.div [ class "fw-bold" ] [ viewUserStatus model.lastPing userVote, text userVote.user.name ] ]
         , viewVote model.room.revealed userVote.vote
         ]
@@ -359,17 +368,37 @@ viewVote revealed vote =
 viewRevealButton : LoadedRoom -> Html Msg
 viewRevealButton model =
     if model.room.revealed then
-        Html.p [] [ Html.button [ onClick Reset ] [ text "Reset" ] ]
+        Html.div [ class "mt-3" ]
+            [ viewResults model
+            , Views.button Reset "Reset" True
+            ]
 
     else
-        Html.p [] [ Html.button [ onClick Reveal ] [ text "Reveal" ] ]
+        Html.p [ class "mt-5" ] [ Views.button Reveal "Reveal" True ]
 
 
-viewValueBar : List Int -> Html Msg
-viewValueBar values =
+viewResults : LoadedRoom -> Html Msg
+viewResults model =
+    Html.div []
+        [ Html.h3 [] [ text "Results" ]
+        , Html.ul [ class "list-group list-group-flush" ]
+            [ Html.li [ class "list-group-item d-flex justify-content-between align-items-start fs-5" ]
+                [ Html.div [ class "ms-2 me-auto" ] [ Html.div [ class "fw-bold" ] [ text "Majority of: " ] ]
+                , text "8"
+                ]
+            , Html.li [ class "list-group-item d-flex justify-content-between align-items-start fs-5" ]
+                [ Html.div [ class "ms-2 me-auto" ] [ Html.div [ class "fw-bold" ] [ text "Mean: " ] ]
+                , text "10"
+                ]
+            ]
+        ]
+
+
+viewValueBar : List Int -> Int -> Html Msg
+viewValueBar values userVote =
     Html.div [ class "row" ]
         (values
-            |> List.map valueButton
+            |> List.map (valueButton userVote)
         )
 
 
@@ -385,18 +414,24 @@ viewUserStatus lastPing user =
             ]
 
     else
-        Html.span []
-            [ Html.i [ class "bi bi-lightning-charge-fill text-success" ] []
-            ]
+        Html.span [] []
 
 
-valueButton : Int -> Html Msg
-valueButton i =
+valueButton : Int -> Int -> Html Msg
+valueButton userVote vote =
+    let
+        className =
+            if userVote == vote then
+                "btn-info"
+
+            else
+                "btn-outline-info"
+    in
     Html.div [ class "col" ]
         [ Html.button
             [ type_ "button"
-            , class "btn btn-info shadow w-100"
-            , onClick (CastVote i)
+            , class ("btn " ++ className ++ " shadow w-100 fs-1")
+            , onClick (CastVote vote)
             ]
-            [ text (String.fromInt i) ]
+            [ text (String.fromInt vote) ]
         ]
