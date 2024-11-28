@@ -2,4 +2,4 @@ module Environment exposing (..)
 
 
 apiUrl =
-    "${API_URL}"
+    "https://ndcnd2zhda.execute-api.eu-west-1.amazonaws.com/"
