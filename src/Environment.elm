@@ -1,0 +1,5 @@
+module Environment exposing (..)
+
+
+apiUrl =
+    "/"

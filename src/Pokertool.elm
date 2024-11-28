@@ -4,6 +4,7 @@ import Browser exposing (UrlRequest(..))
 import Browser.Navigation as Nav
 import Dict
 import Dict.Extra
+import Environment
 import FormatNumber exposing (format)
 import FormatNumber.Locales exposing (usLocale)
 import Html exposing (Html, text)
@@ -104,13 +105,13 @@ init flags url key =
         Just roomId ->
             case flags.user of
                 Just user ->
-                    ( initLoadingRoom key flags.apiUrl flags.roomId flags.user, Room.join flags.apiUrl (Just roomId) user GotRoom )
+                    ( initLoadingRoom key Environment.apiUrl flags.roomId flags.user, Room.join flags.apiUrl (Just roomId) user GotRoom )
 
                 Nothing ->
-                    ( initLoadingRoom key flags.apiUrl flags.roomId flags.user, generateUserUUID )
+                    ( initLoadingRoom key Environment.apiUrl flags.roomId flags.user, generateUserUUID )
 
         Nothing ->
-            ( initLoadingRoom key flags.apiUrl flags.roomId flags.user, generateUserUUID )
+            ( initLoadingRoom key Environment.apiUrl flags.roomId flags.user, generateUserUUID )
 
 
 initLoadingRoom key apiUrl roomId user =
@@ -279,10 +280,6 @@ update msg model =
                             )
 
                 UrlChanged url ->
-                    let
-                        d =
-                            Debug.log "url changed: " url
-                    in
                     case url.path of
                         "/logout" ->
                             onLogout loadedRoom.key loadedRoom.apiUrl (Just loadedRoom.room.id) (Just loadedRoom.user)

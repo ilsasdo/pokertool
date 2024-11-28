@@ -10,6 +10,7 @@ jobs:
         with:
           node-version: '20'
       - run: npm install -g elm
+      - run: envsubst < build/Environment.elm > src/Environment.elm
       - run: elm make src/Pokertool.elm --output dist/app.js
       - name: Pushes to public repository
         id: push_directory
