@@ -1,6 +1,6 @@
 port module Pokertool exposing (..)
 
-import Browser exposing (UrlRequest)
+import Browser exposing (UrlRequest(..))
 import Browser.Navigation as Nav
 import Dict
 import Dict.Extra
@@ -31,7 +31,8 @@ main =
 
 
 type alias LoadingRoom =
-    { inputUser : String
+    { key : Nav.Key
+    , inputUser : String
     , roomId : Maybe String
     , user : Maybe User
     , userUuid : String
@@ -40,7 +41,8 @@ type alias LoadingRoom =
 
 
 type alias LoadedRoom =
-    { room : Room
+    { key : Nav.Key
+    , room : Room
     , user : User
     , values : List Int
     , lastPing : Int
@@ -52,9 +54,9 @@ type Model
     | FullLoadedRoomState LoadedRoom
 
 
-emptyLoadingRoom : Maybe String -> Model
-emptyLoadingRoom roomId =
-    LoadingRoomState { inputUser = "", roomId = roomId, user = Nothing, userUuid = "", inputRoomId = "" }
+emptyLoadingRoom : Nav.Key -> Maybe String -> Model
+emptyLoadingRoom key roomId =
+    LoadingRoomState { key = key, inputUser = "", roomId = roomId, user = Nothing, userUuid = "", inputRoomId = "" }
 
 
 type Msg
@@ -100,21 +102,21 @@ init flags url key =
         Just roomId ->
             case flags.user of
                 Just user ->
-                    ( initLoadingRoom flags.roomId flags.user, Room.join (Just roomId) user GotRoom )
+                    ( initLoadingRoom key flags.roomId flags.user, Room.join (Just roomId) user GotRoom )
 
                 Nothing ->
-                    ( initLoadingRoom flags.roomId flags.user, generateUserUUID )
+                    ( initLoadingRoom key flags.roomId flags.user, generateUserUUID )
 
         Nothing ->
-            ( initLoadingRoom flags.roomId flags.user, generateUserUUID )
+            ( initLoadingRoom key flags.roomId flags.user, generateUserUUID )
 
 
-initLoadingRoom roomId user =
-    LoadingRoomState { inputUser = "", roomId = roomId, user = user, userUuid = "", inputRoomId = "" }
+initLoadingRoom key roomId user =
+    LoadingRoomState { key = key, inputUser = "", roomId = roomId, user = user, userUuid = "", inputRoomId = "" }
 
 
-initFullRoom room user =
-    LoadedRoom room user [ 1, 2, 3, 5, 8, 13, 21 ] 0
+initFullRoom key room user =
+    LoadedRoom key room user [ 1, 2, 3, 5, 8, 13, 21 ] 0
 
 
 subscriptions : Model -> Sub Msg
@@ -176,7 +178,7 @@ update msg model =
                 GotRoom result ->
                     case result of
                         Ok room ->
-                            ( FullLoadedRoomState (initFullRoom room room.user), storeUserPort room.user )
+                            ( FullLoadedRoomState (initFullRoom loadingRoom.key room room.user), storeUserPort room.user )
 
                         Err _ ->
                             ( model, Cmd.none )
@@ -197,11 +199,35 @@ update msg model =
                     in
                     ( LoadingRoomState { loadingRoom | user = Just user }, storeUserPort user )
 
+                LinkClicked urlRequest ->
+                    case urlRequest of
+                        Internal url ->
+                            ( model
+                            , Nav.pushUrl loadingRoom.key (Url.toString url)
+                            )
+
+                        External url ->
+                            ( model
+                            , Nav.load url
+                            )
+
+                UrlChanged url ->
+                    let
+                        d =
+                            Debug.log "url changed: " url
+                    in
+                    case url.path of
+                        "/logout" ->
+                            onLogout loadingRoom.key loadingRoom.roomId loadingRoom.user
+
+                        _ ->
+                            ( model, Cmd.none )
+
                 Logout roomId user ->
-                    onLogout roomId user
+                    onLogout loadingRoom.key roomId (Just user)
 
                 LoggedOut _ ->
-                    onLoggedOut
+                    onLoggedOut loadingRoom.key
 
                 _ ->
                     ( model, Cmd.none )
@@ -234,30 +260,59 @@ update msg model =
                             ( model, Cmd.none )
 
                 Logout roomId user ->
-                    onLogout roomId user
+                    onLogout loadedRoom.key roomId (Just user)
 
                 LoggedOut _ ->
-                    onLoggedOut
+                    onLoggedOut loadedRoom.key
 
                 Ping posix ->
                     ( FullLoadedRoomState { loadedRoom | lastPing = posixToMillis posix // 1000 }, Room.ping loadedRoom.room.id loadedRoom.user GotRoom )
+
+                LinkClicked urlRequest ->
+                    case urlRequest of
+                        Internal url ->
+                            ( model
+                            , Nav.pushUrl loadedRoom.key (Url.toString url)
+                            )
+
+                        External url ->
+                            ( model
+                            , Nav.load url
+                            )
+
+                UrlChanged url ->
+                    let
+                        d =
+                            Debug.log "url changed: " url
+                    in
+                    case url.path of
+                        "/logout" ->
+                            onLogout loadedRoom.key (Just loadedRoom.room.id) (Just loadedRoom.user)
+
+                        _ ->
+                            ( model, Cmd.none )
 
                 _ ->
                     ( model, Cmd.none )
 
 
-onLogout : Maybe String -> User -> ( Model, Cmd Msg )
-onLogout maybeRoomId user =
+onLogout : Nav.Key -> Maybe String -> Maybe User -> ( Model, Cmd Msg )
+onLogout key maybeRoomId user =
     case maybeRoomId of
         Nothing ->
-            onLoggedOut
+            onLoggedOut key
 
         Just roomId ->
-            ( emptyLoadingRoom Nothing, Room.leave roomId user LoggedOut )
+            case user of
+                Just u ->
+                    ( emptyLoadingRoom key Nothing, Room.leave roomId u LoggedOut )
+
+                Nothing ->
+                    onLoggedOut key
 
 
-onLoggedOut =
-    ( emptyLoadingRoom Nothing, Cmd.batch [ logoutPort (), generateUserUUID ] )
+onLoggedOut key =
+    ( emptyLoadingRoom key Nothing, Cmd.batch [ logoutPort (), generateUserUUID, Nav.pushUrl key "/" ] )
 
 
 view : Model -> Browser.Document Msg
@@ -286,7 +341,7 @@ viewLogoutLink user roomId =
         Just u ->
             Html.div [ class "" ]
                 [ text ("Hello " ++ u.name ++ ", ")
-                , Views.linkButton (Logout roomId u) "logout" True
+                , Views.linkButton "logout" "/logout" True
                 ]
 
 
