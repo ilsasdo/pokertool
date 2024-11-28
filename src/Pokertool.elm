@@ -1,6 +1,10 @@
 port module Pokertool exposing (..)
 
 import Browser exposing (UrlRequest)
+import Dict
+import Dict.Extra
+import FormatNumber exposing (format)
+import FormatNumber.Locales exposing (usLocale)
 import Html exposing (Html, text)
 import Html.Attributes exposing (class, href, type_, value)
 import Html.Events exposing (onClick)
@@ -343,7 +347,30 @@ viewRoomLink room =
 
 viewUserVotes : LoadedRoom -> Html msg
 viewUserVotes model =
-    Html.ul [ class "list-group list-group-flush mt-5" ] (List.map (viewUserVote model) (model.room.members |> List.sortBy (\t -> t.user.id) |> List.sortBy (\t -> t.user.name)))
+    let
+        sortBy =
+            if model.room.revealed then
+                sortByVote
+
+            else
+                sortByName
+    in
+    Html.ul [ class "list-group list-group-flush mt-5" ] (List.map (viewUserVote model) (model.room.members |> sortBy))
+
+
+sortByVote : List UserVote -> List UserVote
+sortByVote members =
+    members
+        |> List.sortBy (\t -> t.user.id)
+        |> List.sortBy (\t -> t.user.name)
+        |> List.sortBy (\t -> -t.vote)
+
+
+sortByName : List UserVote -> List UserVote
+sortByName members =
+    members
+        |> List.sortBy (\t -> t.user.id)
+        |> List.sortBy (\t -> t.user.name)
 
 
 viewUserVote : LoadedRoom -> UserVote -> Html msg
@@ -380,18 +407,43 @@ viewRevealButton model =
 viewResults : LoadedRoom -> Html Msg
 viewResults model =
     Html.div []
-        [ Html.h3 [] [ text "Results" ]
+        [ Html.hr [] []
+        , Html.h3 [] [ text "Results" ]
         , Html.ul [ class "list-group list-group-flush" ]
             [ Html.li [ class "list-group-item d-flex justify-content-between align-items-start fs-5" ]
                 [ Html.div [ class "ms-2 me-auto" ] [ Html.div [ class "fw-bold" ] [ text "Majority of: " ] ]
-                , text "8"
+                , text (majorityOf model.room.members |> String.fromInt)
                 ]
             , Html.li [ class "list-group-item d-flex justify-content-between align-items-start fs-5" ]
                 [ Html.div [ class "ms-2 me-auto" ] [ Html.div [ class "fw-bold" ] [ text "Mean: " ] ]
-                , text "10"
+                , text (meanOf model.room.members |> format usLocale)
                 ]
             ]
         ]
+
+
+majorityOf : List UserVote -> Int
+majorityOf votes =
+    Dict.Extra.groupBy .vote votes
+        |> Dict.map (\k -> List.length)
+        |> Dict.toList
+        |> List.sortBy Tuple.second
+        |> List.reverse
+        |> List.head
+        |> Maybe.withDefault ( 0, 0 )
+        |> Tuple.first
+
+
+meanOf : List UserVote -> Float
+meanOf votes =
+    let
+        sum =
+            votes
+                |> List.map .vote
+                |> List.sum
+                |> toFloat
+    in
+    sum / (List.length votes |> toFloat)
 
 
 viewValueBar : List Int -> Int -> Html Msg
