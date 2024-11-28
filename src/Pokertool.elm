@@ -99,7 +99,7 @@ pingTimeSeconds =
     5
 
 
-init : { roomId : Maybe String, user : Maybe User, apiUrl : String } -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
+init : { roomId : Maybe String, user : Maybe User } -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
 init flags url key =
     case flags.roomId of
         Just roomId ->
