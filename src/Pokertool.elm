@@ -1,6 +1,7 @@
 port module Pokertool exposing (..)
 
 import Browser exposing (UrlRequest)
+import Browser.Navigation as Nav
 import Dict
 import Dict.Extra
 import FormatNumber exposing (format)
@@ -14,15 +15,18 @@ import Random
 import Room exposing (Room, User, UserVote)
 import Time exposing (Posix, posixToMillis)
 import UUID exposing (UUID)
+import Url
 import Views
 
 
 main =
-    Browser.element
+    Browser.application
         { init = init
         , view = view
         , update = update
         , subscriptions = subscriptions
+        , onUrlRequest = LinkClicked
+        , onUrlChange = UrlChanged
         }
 
 
@@ -55,7 +59,6 @@ emptyLoadingRoom roomId =
 
 type Msg
     = CastVote Int
-    | Request String
     | CreateRoom
     | GotRoom (Result Http.Error Room)
     | GotPing Posix (Result Http.Error Room)
@@ -70,6 +73,8 @@ type Msg
     | Logout (Maybe String) User
     | Ping Posix
     | LoggedOut (Result Http.Error Room)
+    | UrlChanged Url.Url
+    | LinkClicked Browser.UrlRequest
 
 
 
@@ -89,8 +94,8 @@ pingTimeSeconds =
     5
 
 
-init : { roomId : Maybe String, user : Maybe User } -> ( Model, Cmd Msg )
-init flags =
+init : { roomId : Maybe String, user : Maybe User } -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
+init flags url key =
     case flags.roomId of
         Just roomId ->
             case flags.user of
@@ -252,11 +257,18 @@ onLogout maybeRoomId user =
 
 
 onLoggedOut =
-    ( emptyLoadingRoom Nothing, logoutPort () )
+    ( emptyLoadingRoom Nothing, Cmd.batch [ logoutPort (), generateUserUUID ] )
 
 
-view : Model -> Html Msg
+view : Model -> Browser.Document Msg
 view model =
+    { title = "Poker Tool"
+    , body = [ mainView model ]
+    }
+
+
+mainView : Model -> Html Msg
+mainView model =
     case model of
         LoadingRoomState loadingRoom ->
             Views.page (viewLogoutLink loadingRoom.user loadingRoom.roomId) <| askUser loadingRoom
@@ -375,8 +387,16 @@ sortByName members =
 
 viewUserVote : LoadedRoom -> UserVote -> Html msg
 viewUserVote model userVote =
+    let
+        currentUserClass =
+            if model.user.id == userVote.user.id then
+                "fw-bold text-black"
+
+            else
+                "text-secondary"
+    in
     Html.li [ class "list-group-item d-flex justify-content-between align-items-start fs-5" ]
-        [ Html.div [ class "ms-2 me-auto" ] [ Html.div [ class "fw-bold" ] [ viewUserStatus model.lastPing userVote, text userVote.user.name ] ]
+        [ Html.div [ class "ms-2 me-auto" ] [ Html.div [ class currentUserClass ] [ viewUserStatus model.lastPing userVote, text userVote.user.name ] ]
         , viewVote model.room.revealed userVote.vote
         ]
 

@@ -2,7 +2,8 @@ module Views exposing (..)
 
 import Html exposing (Html, div, h1, p, text)
 import Html.Attributes exposing (class, disabled, for, href, id, placeholder, type_, value)
-import Html.Events exposing (onClick, onInput)
+import Html.Events exposing (onClick, onInput, preventDefaultOn)
+import Json.Decode as Json
 import Room exposing (User)
 
 
@@ -52,7 +53,16 @@ button event label enabled =
 
 linkButton : msg -> String -> Bool -> Html msg
 linkButton event label enabled =
-    Html.a [ href "/", onClick event, disabled (not enabled) ] [ text label ]
+    Html.a [ href "/", onClickPrevented event, disabled (not enabled) ] [ text label ]
+
+
+onClickPrevented msg =
+    preventDefaultOn "click" (Json.map alwaysPreventDefault (Json.succeed msg))
+
+
+alwaysPreventDefault : msg -> ( msg, Bool )
+alwaysPreventDefault msg =
+    ( msg, True )
 
 
 hint : String -> Html msg
