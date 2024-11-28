@@ -105,7 +105,7 @@ init flags url key =
         Just roomId ->
             case flags.user of
                 Just user ->
-                    ( initLoadingRoom key Environment.apiUrl flags.roomId flags.user, Room.join flags.apiUrl (Just roomId) user GotRoom )
+                    ( initLoadingRoom key Environment.apiUrl flags.roomId flags.user, Room.join Environment.apiUrl (Just roomId) user GotRoom )
 
                 Nothing ->
                     ( initLoadingRoom key Environment.apiUrl flags.roomId flags.user, generateUserUUID )
