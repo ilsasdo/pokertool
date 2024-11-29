@@ -1,5 +1,6 @@
 module Room exposing (..)
 
+import Environment exposing (..)
 import Http exposing (Error)
 import Json.Decode as Decode exposing (Decoder, bool, field, int, string)
 
@@ -33,70 +34,70 @@ type alias VoteInfo =
     }
 
 
-urlAddress apiUrl part =
-    apiUrl ++ "room" ++ part
+urlAddress part =
+    Environment.apiUrl ++ "/room" ++ part
 
 
-create : String -> User -> (Result Error Room -> msg) -> Cmd msg
-create apiUrl user event =
+create : User -> (Result Error Room -> msg) -> Cmd msg
+create user event =
     Http.post
-        { url = urlAddress apiUrl "?user=" ++ user.name ++ "&userId=" ++ user.id
+        { url = urlAddress "?user=" ++ user.name ++ "&userId=" ++ user.id
         , body = Http.emptyBody
         , expect = Http.expectJson event (roomDecoder (Room user))
         }
 
 
-ping : String -> String -> User -> (Result Error Room -> msg) -> Cmd msg
-ping apiUrl roomId user event =
+ping : String -> User -> (Result Error Room -> msg) -> Cmd msg
+ping roomId user event =
     Http.post
-        { url = urlAddress apiUrl "/ping?id=" ++ roomId ++ "&userId=" ++ user.id
+        { url = urlAddress "/ping?id=" ++ roomId ++ "&userId=" ++ user.id
         , body = Http.emptyBody
         , expect = Http.expectJson event (roomDecoder (Room user))
         }
 
 
-join : String -> Maybe String -> User -> (Result Error Room -> m) -> Cmd m
-join apiUrl roomId user event =
+join : Maybe String -> User -> (Result Error Room -> m) -> Cmd m
+join roomId user event =
     case roomId of
         Nothing ->
-            create apiUrl user event
+            create user event
 
         Just id ->
             Http.post
-                { url = urlAddress apiUrl "/join?id=" ++ id ++ "&user=" ++ user.name ++ "&userId=" ++ user.id
+                { url = urlAddress "/join?id=" ++ id ++ "&user=" ++ user.name ++ "&userId=" ++ user.id
                 , body = Http.emptyBody
                 , expect = Http.expectJson event (roomDecoder (Room user))
                 }
 
 
-castVote apiUrl room vote event =
+castVote room vote event =
     Http.post
-        { url = urlAddress apiUrl ("/vote?id=" ++ room.id ++ "&userId=" ++ room.user.id ++ "&vote=" ++ String.fromInt vote)
+        { url = urlAddress ("/vote?id=" ++ room.id ++ "&userId=" ++ room.user.id ++ "&vote=" ++ String.fromInt vote)
         , body = Http.emptyBody
         , expect = Http.expectJson event (roomDecoder (Room room.user))
         }
 
 
-reveal apiUrl room event =
+reveal room event =
     Http.post
-        { url = urlAddress apiUrl "/reveal?id=" ++ room.id
+        { url = urlAddress "/reveal?id=" ++ room.id
         , body = Http.emptyBody
         , expect = Http.expectJson event (roomDecoder (Room room.user))
         }
 
 
-leave : String -> String -> User -> (Result Error Room -> msg) -> Cmd msg
-leave apiUrl roomId user event =
+leave : String -> User -> (Result Error Room -> msg) -> Cmd msg
+leave roomId user event =
     Http.post
-        { url = urlAddress apiUrl "/leave?id=" ++ roomId ++ "&userId=" ++ user.id
+        { url = urlAddress "/leave?id=" ++ roomId ++ "&userId=" ++ user.id
         , body = Http.emptyBody
         , expect = Http.expectJson event (roomDecoder (Room user))
         }
 
 
-reset apiUrl room event =
+reset room event =
     Http.post
-        { url = urlAddress apiUrl "/reset?id=" ++ room.id
+        { url = urlAddress "/reset?id=" ++ room.id
         , body = Http.emptyBody
         , expect = Http.expectJson event (roomDecoder (Room room.user))
         }
