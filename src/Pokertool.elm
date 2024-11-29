@@ -204,7 +204,7 @@ update msg model =
                     case urlRequest of
                         Internal url ->
                             ( model
-                            , Nav.pushUrl loadingRoom.key (Url.toString url)
+                            , Nav.pushUrl loadingRoom.key url.path
                             )
 
                         External url ->
@@ -213,7 +213,11 @@ update msg model =
                             )
 
                 UrlChanged url ->
-                    case url.path of
+                    let
+                        path =
+                            String.dropLeft (String.length Environment.basePath) url.path
+                    in
+                    case path of
                         "/logout" ->
                             onLogout loadingRoom.key loadingRoom.roomId loadingRoom.user
 
@@ -269,7 +273,7 @@ update msg model =
                     case urlRequest of
                         Internal url ->
                             ( model
-                            , Nav.pushUrl loadedRoom.key (Environment.basePath ++ Url.toString url)
+                            , Nav.pushUrl loadedRoom.key url.path
                             )
 
                         External url ->
@@ -278,7 +282,11 @@ update msg model =
                             )
 
                 UrlChanged url ->
-                    case url.path of
+                    let
+                        path =
+                            String.dropLeft (String.length Environment.basePath) url.path
+                    in
+                    case path of
                         "/logout" ->
                             onLogout loadedRoom.key (Just loadedRoom.room.id) (Just loadedRoom.user)
 
@@ -305,7 +313,7 @@ onLogout key maybeRoomId user =
 
 
 onLoggedOut key =
-    ( emptyLoadingRoom key Nothing, Cmd.batch [ logoutPort (), generateUserUUID, Nav.pushUrl key (Environment.basePath ++ "/") ] )
+    ( emptyLoadingRoom key Nothing, Cmd.batch [ logoutPort (), generateUserUUID, Nav.pushUrl key "/" ] )
 
 
 view : Model -> Browser.Document Msg
@@ -334,7 +342,7 @@ viewLogoutLink user roomId =
         Just u ->
             Html.div [ class "" ]
                 [ text ("Hello " ++ u.name ++ ", ")
-                , Views.linkButton "logout" "/logout" True
+                , Views.linkButton "logout" (Environment.basePath ++ "/logout") True
                 ]
 
 
