@@ -11,7 +11,7 @@ jobs:
           node-version: '20'
       - run: npm install -g elm
       - run: npm install -g uglify-js
-      - run: ./prodBuild.sh src/Pokertool.elm dist/app.js
+      - run: ./prodBuild.sh src/Pokertool.elm
       - name: Pushes to public repository
         id: push_directory
         uses: cpina/github-action-push-to-another-repository@ssh-deploy-key
