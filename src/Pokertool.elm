@@ -313,7 +313,7 @@ onLogout key maybeRoomId user =
 
 
 onLoggedOut key =
-    ( emptyLoadingRoom key Nothing, Cmd.batch [ logoutPort (), generateUserUUID, Nav.pushUrl key "/" ] )
+    ( emptyLoadingRoom key Nothing, Cmd.batch [ logoutPort (), generateUserUUID, Nav.pushUrl key (Environment.basePath ++ "/") ] )
 
 
 view : Model -> Browser.Document Msg
